@@ -60,6 +60,8 @@ python -m backend.main --list          # вывести все датчики и
 - `window.width` / `window.height` — размер под ваш портативный экран.
 - `window.frameless: true` — окно без рамки (выглядит как чистая панель; тащится мышью).
 - `poll_interval_ms` — период обновления (по умолчанию 1000 мс).
+- `background` — анимированный фон: `"letter-glitch"` или `"none"` (без фона).
+  Файлы фонов лежат в `web/backgrounds/`.
 
 ### Если какая-то метрика не определилась
 
@@ -112,4 +114,6 @@ pchud/
 
 ## Лицензия
 
-MIT.
+MIT, кроме `web/backgrounds/letter-glitch.js`: это перенос компонента LetterGlitch из
+[React Bits](https://github.com/DavidHDev/react-bits) (© David Haz) под лицензией MIT + Commons Clause,
+см. `web/backgrounds/letter-glitch.LICENSE.md`. Её нельзя продавать или распространять отдельно от приложения.

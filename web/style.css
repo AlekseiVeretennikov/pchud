@@ -28,8 +28,16 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── анимированный фон (под всем содержимым) ──────── */
+.hud-bg {
+  position: fixed; inset: 0;
+  pointer-events: none;
+}
+.hud-bg canvas { display: block; width: 100%; height: 100%; }
+
 /* ── сетка ────────────────────────────────────────── */
 .hud {
+  position: relative;  /* поверх .hud-bg */
   width: 100vw; height: 100vh;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -45,7 +53,8 @@ html, body {
 
 /* ── карточки ─────────────────────────────────────── */
 .card {
-  background: linear-gradient(160deg, var(--panel) 0%, var(--panel-2) 100%);
+  /* --panel и --panel-2 с прозрачностью: фон слегка просвечивает, цифры остаются читаемыми */
+  background: linear-gradient(160deg, rgba(12, 16, 24, 0.82) 0%, rgba(9, 13, 20, 0.82) 100%);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px 20px;

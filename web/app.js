@@ -734,7 +734,26 @@ function demoSnapshot() {
   };
 }
 
-window.addEventListener("pywebviewready", () => pollLoop(1000));
+/* ── анимированный фон: имя берётся из config.json ("none" = без фона) ── */
+async function startBackground() {
+  let name = "letter-glitch";  // без pywebview (страница открыта в браузере)
+  if (window.pywebview) {
+    const config = await window.pywebview.api.get_config();
+    name = config.background;
+  }
+  const background = (window.HudBackgrounds || {})[name];
+  if (background) background.start(document.getElementById("hud-bg"));
+}
+
+window.addEventListener("pywebviewready", () => {
+  startBackground();
+  pollLoop(1000);
+});
 window.addEventListener("DOMContentLoaded", () => {
-  setTimeout(() => { if (!window.pywebview) pollLoop(1000); }, 300);
+  setTimeout(() => {
+    if (!window.pywebview) {
+      startBackground();
+      pollLoop(1000);
+    }
+  }, 300);
 });

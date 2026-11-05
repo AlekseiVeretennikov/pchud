@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Анимированный фон: выбирается в config.json, файлы лежат в backgrounds/ -->
+  <div class="hud-bg" id="hud-bg"></div>
   <div class="hud">
 
     <!-- ─── CPU card (включает секцию ядер внизу) ─── -->
@@ -261,6 +263,7 @@
     <div class="toast" data-bind="warning" hidden></div>
 
   </div>
+  <script src="backgrounds/letter-glitch.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

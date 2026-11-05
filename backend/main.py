@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
     "metric_overrides": {},
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
+    "background": "letter-glitch",  # файл из web/backgrounds/ или "none"
 }
 
 
@@ -77,7 +78,10 @@ class Api:
         return self._manager.snapshot()
 
     def get_config(self) -> dict:
-        return {"poll_interval_ms": self._config.get("poll_interval_ms", 1000)}
+        return {
+            "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
+            "background": self._config["background"],
+        }
 
 
 def run_list_mode(manager: SourceManager) -> None:
