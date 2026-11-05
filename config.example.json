@@ -1,0 +1,17 @@
+{
+  "source": "auto",
+  "libre_url": "http://localhost:8085/data.json",
+  "poll_interval_ms": 1000,
+  "fullscreen": false,
+  "window": {
+    "width": 1920,
+    "height": 1080,
+    "x": null,
+    "y": null,
+    "frameless": false
+  },
+  "metric_overrides": {
+    "gpu_temp": {"key": "19:16777216"},
+    "cpu_load": {"sensor": "ryzen", "label": "Total CPU Usage"}
+  }
+}

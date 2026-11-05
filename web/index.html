@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PC HUD</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="hud">
+
+    <!-- ─── CPU card (включает секцию ядер внизу) ─── -->
+    <section class="card card--cpu" data-block="cpu">
+      <header class="card__head">
+        <span class="card__kind">CPU</span>
+        <span class="card__name" data-bind="cpu_name">—</span>
+      </header>
+      <div class="card__body">
+        <div class="gauge" data-gauge="cpu_temp">
+          <svg viewBox="0 0 120 120">
+            <circle class="gauge__track" cx="60" cy="60" r="52"/>
+            <circle class="gauge__fill"  cx="60" cy="60" r="52"/>
+          </svg>
+          <div class="gauge__readout">
+            <span class="gauge__value" data-bind="cpu_temp">--</span><span class="gauge__unit">°C</span>
+          </div>
+        </div>
+        <dl class="stats">
+          <div class="stat">
+            <dt>Нагрузка</dt>
+            <dd><span data-bind="cpu_load">--</span><i>%</i></dd>
+            <div class="bar"><span data-bar="cpu_load"></span></div>
+          </div>
+          <div class="stat">
+            <dt>Частота</dt>
+            <dd><span data-bind="cpu_clock">--</span><i>МГц</i></dd>
+            <div class="bar"><span data-bar="cpu_clock"></span></div>
+          </div>
+          <div class="stat">
+            <dt>Мощность</dt>
+            <dd><span data-bind="cpu_power">--</span><i>Вт</i></dd>
+            <div class="bar"><span data-bar="cpu_power"></span></div>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Секция по ядрам — внутри того же блока CPU -->
+      <div class="card__cores">
+        <!-- CCD1: 3D V-Cache, ядра 1–8 -->
+        <div class="ccd-group">
+          <div class="ccd-label">
+            <span class="ccd-label__tag">3D V-Cache</span>
+            <span class="ccd-label__name">CCD1</span>
+            <span class="ccd-label__rule"></span>
+            <span class="ccd-label__temp" id="ccd1-temp">—</span>
+          </div>
+          <div class="core-grid" id="cores-ccd1"></div>
+        </div>
+        <!-- CCD2: Standard, ядра 9–16 -->
+        <div class="ccd-group">
+          <div class="ccd-label">
+            <span class="ccd-label__tag ccd-label__tag--dim">Standard</span>
+            <span class="ccd-label__name">CCD2</span>
+            <span class="ccd-label__rule"></span>
+            <span class="ccd-label__temp" id="ccd2-temp">—</span>
+          </div>
+          <div class="core-grid" id="cores-ccd2"></div>
+        </div>
+        <!-- Материнская плата: VRM / чипсет / корпус -->
+        <div class="ccd-group">
+          <div class="ccd-label">
+            <span class="ccd-label__tag ccd-label__tag--dim">MB</span>
+            <span class="ccd-label__name">Материнская плата</span>
+            <span class="ccd-label__rule"></span>
+          </div>
+          <div class="mb-grid">
+          <div class="mb-tile">
+            <div class="mb-tile__head">
+              <span class="mb-tile__title">VRM · MOS</span>
+              <span class="mb-tile__val" id="mb-vrm">--</span>
+            </div>
+            <canvas class="mb-tile__spark" id="mb-vrm-spark"></canvas>
+            <div class="mb-tile__sub" id="mb-vrm-sub">--</div>
+          </div>
+          <div class="mb-tile">
+            <div class="mb-tile__head">
+              <span class="mb-tile__title">Чипсет</span>
+              <span class="mb-tile__val" id="mb-chipset">--</span>
+            </div>
+            <canvas class="mb-tile__spark" id="mb-chipset-spark"></canvas>
+            <div class="mb-tile__sub" id="mb-chipset-sub">--</div>
+          </div>
+          <div class="mb-tile">
+            <div class="mb-tile__head">
+              <span class="mb-tile__title">Система · корпус</span>
+              <span class="mb-tile__val" id="mb-sys">--</span>
+            </div>
+            <canvas class="mb-tile__spark" id="mb-sys-spark"></canvas>
+            <div class="mb-tile__sub" id="mb-sys-sub">--</div>
+          </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── GPU card ─── -->
+    <section class="card card--gpu" data-block="gpu">
+      <header class="card__head">
+        <span class="card__kind">GPU</span>
+        <span class="card__name" data-bind="gpu_name">—</span>
+      </header>
+      <div class="card__body">
+        <div class="gauge" data-gauge="gpu_temp">
+          <svg viewBox="0 0 120 120">
+            <circle class="gauge__track" cx="60" cy="60" r="52"/>
+            <circle class="gauge__fill"  cx="60" cy="60" r="52"/>
+          </svg>
+          <div class="gauge__readout">
+            <span class="gauge__value" data-bind="gpu_temp">--</span><span class="gauge__unit">°C</span>
+          </div>
+        </div>
+        <dl class="stats">
+          <div class="stat">
+            <dt>Нагрузка</dt>
+            <dd><span data-bind="gpu_load">--</span><i>%</i></dd>
+            <div class="bar"><span data-bar="gpu_load"></span></div>
+          </div>
+          <div class="stat">
+            <dt>Частота</dt>
+            <dd><span data-bind="gpu_clock">--</span><i>МГц</i></dd>
+            <div class="bar"><span data-bar="gpu_clock"></span></div>
+          </div>
+          <div class="stat">
+            <dt>Мощность</dt>
+            <dd><span data-bind="gpu_power">--</span><i>Вт</i></dd>
+            <div class="bar"><span data-bar="gpu_power"></span></div>
+          </div>
+        </dl>
+      </div>
+
+      <!-- VRAM (напротив CCD1) / RAM (напротив CCD2) под кольцом -->
+      <div class="gpu-mem">
+        <div class="mem-block">
+          <div class="mem-block__head">
+            <span class="mem-block__title">VRAM</span>
+            <span class="mem-block__pct"><span data-bind="vram_pct">--</span><i>%</i></span>
+          </div>
+          <div class="bar bar--lg"><span data-bar="vram_pct"></span></div>
+          <div class="mem-block__sub">
+            <span>Занято <b data-bind="vram_used">--</b> из <b data-bind="vram_total">--</b></span>
+            <span class="mem-block__extra" id="vram-extra">--</span>
+          </div>
+        </div>
+        <div class="mem-block__divider"></div>
+        <div class="mem-block mem-block--ram">
+          <div class="mem-block__head">
+            <span class="mem-block__title">RAM</span>
+            <span class="mem-block__pct"><span data-bind="ram_pct">--</span><i>%</i></span>
+          </div>
+          <div class="bar bar--lg"><span data-bar="ram_pct"></span></div>
+          <div class="mem-block__sub">
+            <span>Занято <b data-bind="ram_used">--</b> из <b data-bind="ram_total">--</b></span>
+            <span class="mem-block__extra" id="ram-extra">--</span>
+          </div>
+          <!-- Температуры планок: плитки строятся в app.js по числу найденных DIMM -->
+          <div class="dimm-row" id="dimm-row"></div>
+        </div>
+
+        <!-- Термики и охлаждение: ряд плиток в стиле плиток платы -->
+        <div class="ccd-group">
+          <div class="ccd-label">
+            <span class="ccd-label__tag ccd-label__tag--dim">GPU</span>
+            <span class="ccd-label__name">Термики и охлаждение</span>
+            <span class="ccd-label__rule"></span>
+          </div>
+          <div class="mb-grid">
+          <div class="mb-tile">
+            <div class="mb-tile__head">
+              <span class="mb-tile__title">Hot Spot</span>
+              <span class="mb-tile__val" id="gpu-hs">--</span>
+            </div>
+            <canvas class="mb-tile__spark" id="gpu-hs-spark"></canvas>
+            <div class="mb-tile__sub" id="gpu-hs-sub">--</div>
+          </div>
+          <div class="mb-tile">
+            <div class="mb-tile__head">
+              <span class="mb-tile__title">Вентиляторы</span>
+              <span class="mb-tile__val" id="gpu-fan-val">--</span>
+            </div>
+            <canvas class="mb-tile__spark" id="gpu-fan-spark"></canvas>
+            <div class="mb-tile__sub" id="gpu-fan-sub">--</div>
+          </div>
+          <div class="mb-tile">
+            <div class="mb-tile__head">
+              <span class="mb-tile__title">Шина · PCIe</span>
+              <span class="mb-tile__val" id="gpu-pcie-val">--</span>
+            </div>
+            <canvas class="mb-tile__spark" id="gpu-bus-spark"></canvas>
+            <div class="mb-tile__sub" id="gpu-bus-sub">--</div>
+          </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Нижний ряд: Накопители / Сеть / FPS ─── -->
+    <div class="mini-row">
+      <section class="card" data-block="drives">
+        <header class="card__head"><span class="card__kind">Накопители</span></header>
+        <div class="drives" id="drives-list">
+          <div class="mini__sub">нет данных</div>
+        </div>
+      </section>
+
+      <section class="card" data-block="net">
+        <header class="card__head">
+          <span class="card__kind">Сеть</span>
+          <span class="card__name" data-bind="net_name">—</span>
+        </header>
+        <div class="net">
+          <div class="net__col">
+            <div class="net__head">
+              <span class="net__dir">↓</span>
+              <span class="net__val" data-bind="net_dl">--</span><i>Мбит/с</i>
+            </div>
+            <canvas class="net__spark" id="net-dl-spark"></canvas>
+          </div>
+          <div class="net__col">
+            <div class="net__head">
+              <span class="net__dir net__dir--up">↑</span>
+              <span class="net__val" data-bind="net_up">--</span><i>Мбит/с</i>
+            </div>
+            <canvas class="net__spark" id="net-up-spark"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" data-block="fps">
+        <header class="card__head"><span class="card__kind">FPS</span></header>
+        <div class="fps-panel" id="fps-panel">
+          <div class="fps-panel__top">
+            <div class="fps-panel__num" data-bind="fps">--</div>
+            <div class="fps-panel__info">
+              <div class="fps-panel__app" id="fps-app">нет активной игры</div>
+              <div class="fps-panel__row"><span>frametime</span><b id="fps-ft">--</b></div>
+              <div class="fps-panel__row"><span>1% low</span><b id="fps-low">--</b></div>
+            </div>
+          </div>
+          <canvas class="fps-panel__spark" id="fps-canvas"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <footer class="hud__foot">
+      <span class="dot" data-state="ok"></span>
+      <span data-bind="source">—</span>
+      <span class="dot" id="rtss-dot" data-state="off"></span>
+      <span>RTSS</span>
+      <span class="clock" data-bind="clock">--:--</span>
+    </footer>
+    <div class="toast" data-bind="warning" hidden></div>
+
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
