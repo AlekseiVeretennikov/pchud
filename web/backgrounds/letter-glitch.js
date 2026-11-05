@@ -15,7 +15,7 @@
     fontSize: 14,
     spacing: 0.6,
     density: 0.9,
-    baseOpacity: 0.16,
+    baseOpacity: 0.22,  // в оригинале 0.16: на портативном мониторе фон почти терялся
     glitchAmount: 0.5,
     speed: 1,
     flow: 0.5,

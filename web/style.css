@@ -54,7 +54,7 @@ html, body {
 /* ── карточки ─────────────────────────────────────── */
 .card {
   /* --panel и --panel-2 с прозрачностью: фон слегка просвечивает, цифры остаются читаемыми */
-  background: linear-gradient(160deg, rgba(12, 16, 24, 0.82) 0%, rgba(9, 13, 20, 0.82) 100%);
+  background: linear-gradient(160deg, rgba(12, 16, 24, 0.6) 0%, rgba(9, 13, 20, 0.6) 100%);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px 20px;
