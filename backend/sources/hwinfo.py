@@ -21,7 +21,6 @@ HWiNFO пишет в сигнатуру b"DEAD". В этом случае read()
 from __future__ import annotations
 
 import ctypes
-import mmap
 import sys
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +28,7 @@ from typing import Any
 # Имя shared-memory объекта, который создаёт HWiNFO
 HWINFO_SHARED_MEM_NAME = "Global\\HWiNFO_SENS_SM2"
 HWINFO_SHARED_MEM_NAME_LOCAL = "HWiNFO_SENS_SM2"
+FILE_MAP_READ = 0x0004
 
 SIGNATURE_ALIVE = b"HWiS"
 SIGNATURE_DEAD = b"DEAD"  # HWiNFO закрыт или истёк 12-часовой лимит бесплатной версии
@@ -140,31 +140,73 @@ def _struct_from_slice(struct_cls: type, buf: bytes) -> Any:
     return struct_cls.from_buffer_copy(buf[:need])
 
 
+class _SharedMemView:
+    """Отображение существующего объекта только для чтения: срезы отдают bytes.
+
+    Не mmap.mmap(-1, tagname=...): он вызывает CreateFileMapping, а создавать объекты
+    в пространстве Global\\ без прав администратора запрещено (WinError 5), причём даже
+    если объект уже есть. OpenFileMapping только открывает и работает у обычного
+    пользователя; пустых объектов с именем HWiNFO он тоже не создаёт.
+    """
+
+    def __init__(self, handle: int, address: int, size: int) -> None:
+        self._handle = handle
+        self._address = address
+        self._size = size
+
+    def __getitem__(self, key: slice) -> bytes:
+        start, stop, _ = key.indices(self._size)
+        return ctypes.string_at(self._address + start, max(0, stop - start))
+
+    def close(self) -> None:
+        kernel32 = _kernel32()
+        kernel32.UnmapViewOfFile(self._address)
+        kernel32.CloseHandle(self._handle)
+
+
+def _kernel32() -> Any:
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenFileMappingW.restype = ctypes.c_void_p
+    k32.OpenFileMappingW.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_wchar_p]
+    k32.MapViewOfFile.restype = ctypes.c_void_p
+    k32.MapViewOfFile.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_size_t,
+    ]
+    k32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
+    k32.CloseHandle.argtypes = [ctypes.c_void_p]
+    return k32
+
+
 class HwinfoSource:
     name = "hwinfo"
     display_name = "HWiNFO Shared Memory"
 
     def __init__(self) -> None:
-        self._mm: mmap.mmap | None = None
+        self._mm: _SharedMemView | None = None
         self._mapped_size = 0
 
     # ------------------------------------------------------------------ mmap
 
     @staticmethod
-    def _open_mmap(length: int) -> mmap.mmap:
-        # mmap.mmap(-1, length, tagname=...) под Windows открывает существующий
-        # именованный объект. Если объекта нет, mmap его СОЗДАСТ (пустым) —
-        # такой случай отсекается проверкой сигнатуры ниже.
+    def _open_mmap(length: int) -> _SharedMemView:
         # Сначала пробуем глобальное имя, затем локальное.
-        last_err: OSError | None = None
+        kernel32 = _kernel32()
+        last_err = 0
         for tag in (HWINFO_SHARED_MEM_NAME, HWINFO_SHARED_MEM_NAME_LOCAL):
-            try:
-                return mmap.mmap(-1, length, tagname=tag, access=mmap.ACCESS_READ)
-            except OSError as e:
-                last_err = e
-        raise HwinfoUnavailableError(f"не удалось открыть {HWINFO_SHARED_MEM_NAME}: {last_err}")
+            handle = kernel32.OpenFileMappingW(FILE_MAP_READ, 0, tag)
+            if not handle:
+                last_err = ctypes.get_last_error()
+                continue
+            address = kernel32.MapViewOfFile(handle, FILE_MAP_READ, 0, 0, length)
+            if address:
+                return _SharedMemView(handle, address, length)
+            last_err = ctypes.get_last_error()
+            kernel32.CloseHandle(handle)
+        raise HwinfoUnavailableError(
+            f"не удалось открыть {HWINFO_SHARED_MEM_NAME}: WinError {last_err}"
+        )
 
-    def _check_signature(self, mm: mmap.mmap) -> None:
+    def _check_signature(self, mm: _SharedMemView) -> None:
         sig = bytes(mm[0:4])
         if sig == SIGNATURE_ALIVE:
             return
