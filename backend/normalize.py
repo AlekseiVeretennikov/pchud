@@ -306,11 +306,26 @@ def collect_drives(readings: list, only: list | None = None) -> list:
     (HWiNFO не публикует объём разделов). Буква диска берётся из имени сенсора.
 
     only — список букв из конфига (["C:", "Z:"]), None = все диски с датчиком.
-    Возвращает [{letter, name, temp, used_pct, used_gb, total_gb}].
+    Возвращает [{letter, name, kind, temp, used_pct, used_gb, total_gb,
+    read_mbs, write_mbs, activity_pct}]: сначала NVMe, затем SSD и HDD.
     """
     want = {w.rstrip(":").upper() for w in only} if only else None
     out: list[dict] = []
     seen: set[str] = set()
+
+    # Тип диска определяем по набору S.M.A.R.T.-показаний: "доступный резерв" есть
+    # только у NVMe, ресурс — у SSD. SATA SSD без датчика ресурса попадёт в HDD.
+    nvme: set[str] = set()
+    ssd: set[str] = set()
+    for r in readings:
+        m = _RE_SMART.search(r.sensor)
+        if not m:
+            continue
+        label = _norm(r.label)
+        if "резерв" in label or "spare" in label:
+            nvme.add(m.group(2).upper())
+        elif "срок службы" in label or "remaining life" in label:
+            ssd.add(m.group(2).upper())
 
     for r in readings:
         if r.kind != "temp" or _norm(r.label) not in _DRIVE_TEMP_LABELS:
@@ -335,15 +350,17 @@ def collect_drives(readings: list, only: list | None = None) -> list:
         out.append({
             "letter": f"{letter}:",
             "name": model,
+            "kind": "NVMe" if letter in nvme else "SSD" if letter in ssd else "HDD",
             "temp": float(r.value),
             "used_pct": used_pct,
             "used_gb": used_gb,
             "total_gb": total_gb,
             "read_mbs": None,
             "write_mbs": None,
+            "activity_pct": None,
         })
 
-    # Текущие скорости чтения/записи — из отдельных сенсоров "Drive: ... [X:]"
+    # Текущие скорости и активность — из отдельных сенсоров "Drive: ... [X:]"
     by_letter = {d["letter"][0]: d for d in out}
     for r in readings:
         m = _RE_DRIVE_ACT.match(_norm(r.sensor))
@@ -357,7 +374,11 @@ def collect_drives(readings: list, only: list | None = None) -> list:
             d["read_mbs"] = round(float(r.value), 1)
         elif "скорость записи" in label or "write rate" in label:
             d["write_mbs"] = round(float(r.value), 1)
+        elif "общая активность" in label or "total activity" in label:
+            d["activity_pct"] = round(float(r.value), 1)
 
+    rank = {"NVMe": 0, "SSD": 1, "HDD": 2}
+    out.sort(key=lambda d: (rank[d["kind"]], d["letter"]))
     return out
 
 

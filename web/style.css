@@ -61,6 +61,24 @@ html, body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
+}
+/* Уголки рамки: цветная обводка, от которой маска оставляет только углы.
+   --frame у CPU и GPU задаётся из app.js по температуре. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--frame, var(--cyan));
+  border-radius: 13px;
+  opacity: 0.8;
+  pointer-events: none;
+  --corner: 26px;
+  mask:
+    linear-gradient(#000 0 0) top left / var(--corner) var(--corner) no-repeat,
+    linear-gradient(#000 0 0) top right / var(--corner) var(--corner) no-repeat,
+    linear-gradient(#000 0 0) bottom left / var(--corner) var(--corner) no-repeat,
+    linear-gradient(#000 0 0) bottom right / var(--corner) var(--corner) no-repeat;
 }
 .card--cpu { grid-area: cpu; }
 .card--gpu { grid-area: gpu; }
@@ -256,20 +274,40 @@ html, body {
 
 /* ── накопители ──────────────────────────────────────── */
 .drives {
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 8px;
   justify-content: flex-start;   /* строки прижаты к верху панели */
   flex: 1; min-height: 0;
 }
+/* ширины колонок фиксированы: каждая строка — своя сетка, иначе колонки разъедутся */
 .drive {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 52px minmax(60px, 130px) 44px;
+  grid-template-columns: minmax(0, 1fr) 140px 38px 42px minmax(50px, 90px) 34px;
   align-items: center;
   gap: 10px;
   font-family: var(--mono); font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
+.drive--head { font-size: 10px; color: var(--ink-dim); margin-bottom: -3px; }
+.drive--head span { text-align: right; }
+.drive__used { grid-column: span 2; }
 .drive__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .drive__name i { font-style: normal; color: var(--ink-dim); margin-right: 6px; }
-.drive__rate { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+.drive__kind {
+  display: inline-block;
+  min-width: 34px;
+  margin-right: 7px;
+  padding: 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+  vertical-align: 1px;
+  color: var(--ink-dim);
+}
+.drive__kind--nvme, .drive__kind--ssd { color: var(--cyan); border-color: rgba(56, 225, 196, 0.35); }
+.drive__rate { font-size: 11px; color: var(--ink-dim); white-space: nowrap; text-align: right; }
+.drive__act { font-size: 12px; text-align: right; }
 .drive__temp { font-weight: 700; text-align: right; }
 .drive .bar { margin-top: 0; }
 .drive__pct { color: var(--ink-dim); text-align: right; }

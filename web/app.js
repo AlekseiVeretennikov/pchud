@@ -8,10 +8,74 @@ function colorForTemp(v) {
   if (v >= 65) return "var(--amber)";
   return "var(--cyan)";
 }
+// Для дисков общие пороги не подходят: жёсткий диск перегрет уже при 55 °C
+function colorForDriveTemp(v, kind) {
+  const [amber, red] = kind === "HDD" ? [45, 55] : [60, 75];
+  if (v >= red) return "var(--red)";
+  if (v >= amber) return "var(--amber)";
+  return "var(--cyan)";
+}
 function colorForLoad(v) {
   if (v >= 90) return "var(--red)";
   if (v >= 70) return "var(--amber)";
   return "var(--cyan)";
+}
+
+/* ── плавный счёт чисел (как режим count в Count Up из React Bits) ──
+   Анимирует все числа в строке: "Vcore 1.136 В · SoC 1.312 В" считается по обоим значениям.
+   Если текст изменился не только в числах ("--" -> "42°C"), он заменяется сразу. */
+const COUNT_MS = 800;         // меньше интервала опроса, чтобы успевать дойти до значения
+const COUNT_FRAME_MS = 33;    // около 30 кадров в секунду, чтобы не нагружать ПК в играх
+const NUMBER_RE = /-?\d+(?:\.\d+)?/g;
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const counters = new Map();   // элемент -> { from, to, decimals, parts, target, start }
+let countRaf = 0;
+let countLastFrame = 0;
+
+function countText(el, value) {
+  const text = String(value);
+  const running = counters.get(el);
+  if ((running ? running.target : el.textContent) === text) return;
+
+  const shown = el.textContent;
+  const numbers = text.match(NUMBER_RE);
+  const sameShape = shown.replace(NUMBER_RE, "#") === text.replace(NUMBER_RE, "#");
+  if (!numbers || !sameShape || document.hidden || REDUCED_MOTION) {
+    counters.delete(el);
+    el.textContent = text;
+    return;
+  }
+  counters.set(el, {
+    from: shown.match(NUMBER_RE).map(Number),
+    to: numbers.map(Number),
+    decimals: numbers.map((n) => (n.split(".")[1] || "").length),
+    parts: text.split(NUMBER_RE),
+    target: text,
+    start: performance.now(),
+  });
+  if (!countRaf) countRaf = requestAnimationFrame(countFrame);
+}
+
+function countFrame(now) {
+  countRaf = 0;
+  if (now - countLastFrame >= COUNT_FRAME_MS - 1) {
+    countLastFrame = now;
+    for (const [el, c] of counters) {
+      const t = Math.min(1, (now - c.start) / COUNT_MS);
+      if (t >= 1) {
+        el.textContent = c.target;
+        counters.delete(el);
+        continue;
+      }
+      const eased = 1 - (1 - t) ** 3;  // easeOut: быстро в начале, плавно к концу
+      let text = c.parts[0];
+      c.to.forEach((to, i) => {
+        text += (c.from[i] + (to - c.from[i]) * eased).toFixed(c.decimals[i]) + c.parts[i + 1];
+      });
+      if (el.textContent !== text) el.textContent = text;
+    }
+  }
+  if (counters.size) countRaf = requestAnimationFrame(countFrame);
 }
 
 function setMbTemp(id, metric, warn, crit) {
@@ -19,10 +83,10 @@ function setMbTemp(id, metric, warn, crit) {
   if (!el) return;
   if (metric) {
     const v = Number(metric.value);
-    el.textContent = `${Math.round(v)}°C`;
+    countText(el, `${Math.round(v)}°C`);
     el.style.color = v >= crit ? "var(--red)" : v >= warn ? "var(--amber)" : "var(--cyan)";
   } else {
-    el.textContent = "--";
+    countText(el, "--");
     el.style.color = "var(--ink-dim)";
   }
 }
@@ -31,6 +95,10 @@ function setText(key, value) {
   document.querySelectorAll(`[data-bind="${key}"]`).forEach((el) => {
     el.textContent = value;
   });
+}
+
+function setNumber(key, value) {
+  document.querySelectorAll(`[data-bind="${key}"]`).forEach((el) => countText(el, value));
 }
 
 function fmt(metric, digits = 0) {
@@ -154,7 +222,7 @@ function renderCores(cores, metrics) {
   for (const c of cores) {
     if (c.clock != null) {
       const el = document.querySelector(`[data-cc="${c.id}"]`);
-      if (el) el.textContent = Math.round(c.clock);
+      if (el) countText(el, Math.round(c.clock));
     }
 
     // спарклайн: история приходит из бэкенда (deque на 60 точек)
@@ -163,15 +231,15 @@ function renderCores(cores, metrics) {
 
     if (c.load != null) {
       const pct = document.querySelector(`[data-cl="${c.id}"]`);
-      if (pct) pct.textContent = `${Math.round(Math.min(100, Math.max(0, c.load)))}%`;
+      if (pct) countText(pct, `${Math.round(Math.min(100, Math.max(0, c.load)))}%`);
     }
     const ct = document.querySelector(`[data-ct="${c.id}"]`);
     if (ct) {
       if (c.temp != null) {
-        ct.textContent = Math.round(c.temp);
+        countText(ct, Math.round(c.temp));
         ct.parentElement.style.color = colorForTemp(c.temp);
       } else {
-        ct.textContent = "--";
+        countText(ct, "--");
         ct.parentElement.style.color = "var(--ink-dim)";
       }
     }
@@ -182,12 +250,12 @@ function renderCores(cores, metrics) {
   const t2El = document.getElementById("ccd2-temp");
   if (t1El && metrics.ccd1_temp) {
     const v = Number(metrics.ccd1_temp.value);
-    t1El.textContent = `${Math.round(v)}°C`;
+    countText(t1El, `${Math.round(v)}°C`);
     t1El.style.color = colorForTemp(v);
   }
   if (t2El && metrics.ccd2_temp) {
     const v = Number(metrics.ccd2_temp.value);
-    t2El.textContent = `${Math.round(v)}°C`;
+    countText(t2El, `${Math.round(v)}°C`);
     t2El.style.color = colorForTemp(v);
   }
 }
@@ -227,14 +295,14 @@ function renderMb(snap, m) {
   if (vrmSub) {
     const vc  = m.vcore    ? Number(m.vcore.value).toFixed(3)    : "--";
     const soc = m.soc_volt ? Number(m.soc_volt.value).toFixed(3) : "--";
-    vrmSub.textContent = `Vcore ${vc} В · SoC ${soc} В`;
+    countText(vrmSub, `Vcore ${vc} В · SoC ${soc} В`);
   }
 
   const chSub = document.getElementById("mb-chipset-sub");
   if (chSub) {
-    chSub.textContent = m.chipset_board_temp
+    countText(chSub, m.chipset_board_temp
       ? `у платы ${Math.round(Number(m.chipset_board_temp.value))} °C`
-      : "--";
+      : "--");
   }
 
   const sysSub = document.getElementById("mb-sys-sub");
@@ -246,7 +314,7 @@ function renderMb(snap, m) {
       .map((f) => (f ? Math.round(Number(f.value)) : 0))
       .filter((v) => v > 0); // остановленные вентиляторы скрываем
     if (fans.length) parts.push(`вент. ${fans.join(" ")}`);
-    sysSub.textContent = parts.join(" · ") || "--";
+    countText(sysSub, parts.join(" · ") || "--");
   }
 }
 
@@ -277,7 +345,7 @@ function renderDimms(dimms) {
     const tile = row.children[i];
     const v = Math.round(d.temp);
     const val = tile.querySelector(".mb-tile__val");
-    val.textContent = `${v}°C`;
+    countText(val, `${v}°C`);
     val.style.color = v >= 55 ? "var(--red)" : v >= 45 ? "var(--amber)" : "var(--cyan)";
     drawTempSpark(tile.querySelector("canvas"), d.history);
   });
@@ -294,10 +362,10 @@ function renderGpuTiles(snap, m) {
   if (hsSub) {
     if (m.gpu_hotspot && m.gpu_temp) {
       const d = Number(m.gpu_hotspot.value) - Number(m.gpu_temp.value);
-      hsSub.textContent = `Δ к ГП ${d.toFixed(0)} °C`;
+      countText(hsSub, `Δ к ГП ${d.toFixed(0)} °C`);
       hsSub.style.color = d > 25 ? "var(--red)" : d > 20 ? "var(--amber)" : "var(--ink-dim)";
     } else {
-      hsSub.textContent = "--";
+      countText(hsSub, "--");
       hsSub.style.color = "var(--ink-dim)";
     }
   }
@@ -308,10 +376,10 @@ function renderGpuTiles(snap, m) {
   const fanVal = document.getElementById("gpu-fan-val");
   if (fanVal) {
     if (maxRpm) {
-      fanVal.textContent = String(maxRpm);
+      countText(fanVal, maxRpm);
       fanVal.style.color = "var(--ink)";
     } else {
-      fanVal.textContent = fans.length ? "стоп" : "--";
+      countText(fanVal, fans.length ? "стоп" : "--");
       fanVal.style.color = "var(--ink-dim)";
     }
   }
@@ -323,25 +391,25 @@ function renderGpuTiles(snap, m) {
   }
   const fanSub = document.getElementById("gpu-fan-sub");
   if (fanSub) {
-    fanSub.textContent = fans.length
+    countText(fanSub, fans.length
       ? fans.map((v, i) => `F${i + 1} ${v}`).join(" · ")
-      : "--";
+      : "--");
   }
 
   // Шина: скорость PCIe крупно + спарклайн и текущая нагрузка шины
   const pcieVal = document.getElementById("gpu-pcie-val");
   if (pcieVal) {
-    pcieVal.textContent = m.pcie_speed
+    countText(pcieVal, m.pcie_speed
       ? `${Number(m.pcie_speed.value).toFixed(0)} GT/s`
-      : "--";
+      : "--");
   }
   const busCanvas = document.getElementById("gpu-bus-spark");
   if (busCanvas) drawSpark(busCanvas, hist.bus || [], 100, 0, MB_HIST_LEN, false);
   const busSub = document.getElementById("gpu-bus-sub");
   if (busSub) {
-    busSub.textContent = m.bus_load
+    countText(busSub, m.bus_load
       ? `нагрузка шины ${Math.round(Number(m.bus_load.value))}%`
-      : "--";
+      : "--");
   }
 }
 
@@ -421,20 +489,47 @@ function renderDrives(drives) {
   if (!el) return;
   if (!drives || drives.length === 0) {
     el.innerHTML = '<div class="mini__sub">нет данных</div>';
+    delete el.dataset.layout;
     return;
   }
   const rate = (v) => (v == null ? "--" : v >= 10 ? String(Math.round(v)) : v.toFixed(1));
-  el.innerHTML = drives.map((d) => {
+
+  // Строки перестраиваем, только если изменился набор дисков, иначе числам нечего анимировать
+  const layout = drives.map((d) => `${d.kind} ${d.letter} ${d.name}`).join("|");
+  if (el.dataset.layout !== layout) {
+    el.dataset.layout = layout;
+    el.innerHTML = `<div class="drive drive--head">
+        <span></span><span>чтение · запись</span><span>актив.</span><span>темп.</span><span class="drive__used">занято</span>
+      </div>` + drives.map((d) => `<div class="drive" data-letter="${d.letter}">
+        <span class="drive__name"><b class="drive__kind drive__kind--${d.kind.toLowerCase()}">${d.kind}</b><i>${d.letter}</i>${d.name}</span>
+        <span class="drive__rate"></span>
+        <span class="drive__act"></span>
+        <span class="drive__temp"></span>
+        <div class="bar"><span></span></div>
+        <span class="drive__pct"></span>
+      </div>`).join("");
+  }
+
+  for (const d of drives) {
+    const row = el.querySelector(`[data-letter="${d.letter}"]`);
     const t = d.temp != null ? Math.round(d.temp) : null;
     const p = d.used_pct != null ? Math.round(d.used_pct) : null;
-    return `<div class="drive">
-      <span class="drive__name"><i>${d.letter}</i>${d.name}</span>
-      <span class="drive__rate">R ${rate(d.read_mbs)} · W ${rate(d.write_mbs)} MB/s</span>
-      <span class="drive__temp" style="color:${t != null ? colorForTemp(t) : "var(--ink-dim)"}">${t != null ? t + "°C" : "--"}</span>
-      <div class="bar"><span style="width:${p ?? 0}%;background:${colorForLoad(p ?? 0)}"></span></div>
-      <span class="drive__pct">${p != null ? p + "%" : "--"}</span>
-    </div>`;
-  }).join("");
+    const a = d.activity_pct != null ? Math.round(d.activity_pct) : null;
+    countText(row.querySelector(".drive__rate"), `R ${rate(d.read_mbs)} · W ${rate(d.write_mbs)} MB/s`);
+
+    const act = row.querySelector(".drive__act");
+    countText(act, a != null ? `${a}%` : "--");
+    act.style.color = a != null ? colorForLoad(a) : "var(--ink-dim)";
+
+    const temp = row.querySelector(".drive__temp");
+    countText(temp, t != null ? `${t}°C` : "--");
+    temp.style.color = t != null ? colorForDriveTemp(t, d.kind) : "var(--ink-dim)";
+
+    const bar = row.querySelector(".bar span");
+    bar.style.width = `${p ?? 0}%`;
+    bar.style.background = colorForLoad(p ?? 0);
+    countText(row.querySelector(".drive__pct"), p != null ? `${p}%` : "--");
+  }
 }
 
 /* ── сеть ────────────────────────────────────────────── */
@@ -448,14 +543,14 @@ function renderNetwork(net) {
   const dlCanvas = document.getElementById("net-dl-spark");
   const upCanvas = document.getElementById("net-up-spark");
   if (net) {
-    setText("net_dl", fmtMbps(net.dl_mbps));
-    setText("net_up", fmtMbps(net.up_mbps));
+    setNumber("net_dl", fmtMbps(net.dl_mbps));
+    setNumber("net_up", fmtMbps(net.up_mbps));
     // "RealTek ... PCIe Ethernet Controller - Ethernet" -> "Ethernet"
     const parts = (net.name || "").split(" - ");
     setText("net_name", parts[parts.length - 1] || net.name || "—");
   } else {
-    setText("net_dl", "--");
-    setText("net_up", "--");
+    setNumber("net_dl", "--");
+    setNumber("net_up", "--");
     setText("net_name", "нет активного адаптера");
   }
   // общая автошкала для обоих графиков: максимум по буферам, но не меньше 10 Мбит/с
@@ -477,24 +572,24 @@ function render(snap) {
   setText("cpu_name", cleanName(m.cpu_temp?.sensor || m.cpu_load?.sensor) || "—");
   setText("gpu_name", cleanName(m.gpu_temp?.sensor || m.gpu_load?.sensor) || "—");
 
-  setText("cpu_temp",  fmt(m.cpu_temp));
-  setText("cpu_load",  fmt(m.cpu_load,  0));
-  setText("cpu_clock", fmt(m.cpu_clock));
-  setText("cpu_power", fmt(m.cpu_power, 0));
+  setNumber("cpu_temp",  fmt(m.cpu_temp));
+  setNumber("cpu_load",  fmt(m.cpu_load,  0));
+  setNumber("cpu_clock", fmt(m.cpu_clock));
+  setNumber("cpu_power", fmt(m.cpu_power, 0));
 
-  setText("gpu_temp",  fmt(m.gpu_temp));
-  setText("gpu_load",  fmt(m.gpu_load,  0));
-  setText("gpu_clock", fmt(m.gpu_clock));
-  setText("gpu_power", fmt(m.gpu_power, 0));
+  setNumber("gpu_temp",  fmt(m.gpu_temp));
+  setNumber("gpu_load",  fmt(m.gpu_load,  0));
+  setNumber("gpu_clock", fmt(m.gpu_clock));
+  setNumber("gpu_power", fmt(m.gpu_power, 0));
 
   // VRAM / RAM в карточке GPU: бар + "занято X из Y GB" + проценты
   const vramUsed  = m.vram_used ? Number(m.vram_used.value) : null;
   const vramTotal = Number(snap.vram_total_gb) || null;
   const vramPct   = vramUsed != null && vramTotal ? (vramUsed / vramTotal) * 100
                   : (m.vram_load ? Number(m.vram_load.value) : null);
-  setText("vram_pct",   vramPct  != null ? Math.round(vramPct) : "--");
-  setText("vram_used",  vramUsed != null ? `${vramUsed.toFixed(1)} GB` : "--");
-  setText("vram_total", vramTotal ? `${vramTotal} GB` : "--");
+  setNumber("vram_pct",   vramPct  != null ? Math.round(vramPct) : "--");
+  setNumber("vram_used",  vramUsed != null ? `${vramUsed.toFixed(1)} GB` : "--");
+  setNumber("vram_total", vramTotal ? `${vramTotal} GB` : "--");
   if (vramPct != null) updateBar("vram_pct", vramPct, colorForLoad);
 
   const ramUsed  = m.ram_used  ? Number(m.ram_used.value)  : null;
@@ -502,9 +597,9 @@ function render(snap) {
   const ramTotal = ramUsed != null && ramAvail != null ? ramUsed + ramAvail : null;
   const ramPct   = m.ram_load ? Number(m.ram_load.value)
                  : (ramTotal ? (ramUsed / ramTotal) * 100 : null);
-  setText("ram_pct",   ramPct   != null ? Math.round(ramPct) : "--");
-  setText("ram_used",  ramUsed  != null ? `${ramUsed.toFixed(1)} GB` : "--");
-  setText("ram_total", ramTotal != null ? `${ramTotal.toFixed(1)} GB` : "--");
+  setNumber("ram_pct",   ramPct   != null ? Math.round(ramPct) : "--");
+  setNumber("ram_used",  ramUsed  != null ? `${ramUsed.toFixed(1)} GB` : "--");
+  setNumber("ram_total", ramTotal != null ? `${ramTotal.toFixed(1)} GB` : "--");
   if (ramPct != null) updateBar("ram_pct", ramPct, colorForLoad);
 
   // правая часть второй строки VRAM: частота памяти + контроллер
@@ -513,13 +608,13 @@ function render(snap) {
     const parts = [];
     if (m.vram_clock)     parts.push(`частота ${Math.round(Number(m.vram_clock.value))} МГц`);
     if (m.vram_ctrl_load) parts.push(`контроллер ${Math.round(Number(m.vram_ctrl_load.value))}%`);
-    vramExtra.textContent = parts.join(" · ") || "--";
+    countText(vramExtra, parts.join(" · ") || "--");
   }
 
   // правая часть второй строки RAM: свободная память
   const ramExtra = document.getElementById("ram-extra");
   if (ramExtra) {
-    ramExtra.textContent = ramAvail != null ? `свободно ${ramAvail.toFixed(1)} GB` : "--";
+    countText(ramExtra, ramAvail != null ? `свободно ${ramAvail.toFixed(1)} GB` : "--");
   }
   renderDimms(snap.dimms || []);
 
@@ -533,29 +628,32 @@ function render(snap) {
   const fpsInfo = snap.fps;
   if (fpsInfo && fpsInfo.fps) {
     if (fpsPanel) fpsPanel.classList.remove("fps-panel--idle");
-    setText("fps", Math.round(fpsInfo.fps));
+    setNumber("fps", Math.round(fpsInfo.fps));
     if (fpsApp) fpsApp.textContent = fpsInfo.app_name;
-    if (fpsFt) fpsFt.textContent = `${Number(fpsInfo.frametime_ms).toFixed(1)} мс`;
-    if (fpsLow) fpsLow.textContent =
-      fpsInfo.low1_fps != null ? `${Math.round(fpsInfo.low1_fps)} FPS` : "--";
+    if (fpsFt) countText(fpsFt, `${Number(fpsInfo.frametime_ms).toFixed(1)} мс`);
+    if (fpsLow) countText(fpsLow,
+      fpsInfo.low1_fps != null ? `${Math.round(fpsInfo.low1_fps)} FPS` : "--");
   } else if (m.fps && Number(m.fps.value) > 0) {
     // запасной путь: показание FPS из основного источника (без фреймтайма)
     if (fpsPanel) fpsPanel.classList.remove("fps-panel--idle");
-    setText("fps", fmt(m.fps));
+    setNumber("fps", fmt(m.fps));
     if (fpsApp) fpsApp.textContent = "";
-    if (fpsFt) fpsFt.textContent = "--";
-    if (fpsLow) fpsLow.textContent = "--";
+    if (fpsFt) countText(fpsFt, "--");
+    if (fpsLow) countText(fpsLow, "--");
   } else {
     if (fpsPanel) fpsPanel.classList.add("fps-panel--idle");
-    setText("fps", "--");
+    setNumber("fps", "--");
     if (fpsApp) fpsApp.textContent = "нет активной игры";
-    if (fpsFt) fpsFt.textContent = "--";
-    if (fpsLow) fpsLow.textContent = "--";
+    if (fpsFt) countText(fpsFt, "--");
+    if (fpsLow) countText(fpsLow, "--");
   }
   if (fpsCanvas) drawFrametime(fpsCanvas, fpsInfo && fpsInfo.history ? fpsInfo.history : []);
 
   if (m.cpu_temp)  updateGauge("cpu_temp",  Number(m.cpu_temp.value),  100, colorForTemp);
   if (m.gpu_temp)  updateGauge("gpu_temp",  Number(m.gpu_temp.value),  100, colorForTemp);
+  // уголки карточек CPU и GPU показывают тот же уровень температуры, что и шкала
+  if (m.cpu_temp)  document.querySelector(".card--cpu").style.setProperty("--frame", colorForTemp(Number(m.cpu_temp.value)));
+  if (m.gpu_temp)  document.querySelector(".card--gpu").style.setProperty("--frame", colorForTemp(Number(m.gpu_temp.value)));
   if (m.cpu_load)  updateBar("cpu_load",  Number(m.cpu_load.value),  colorForLoad);
   if (m.gpu_load)  updateBar("gpu_load",  Number(m.gpu_load.value),  colorForLoad);
   // GPU clock: 0–3000 МГц; GPU power: 0–400 Вт
@@ -666,10 +764,10 @@ function demoSnapshot() {
         history: Array.from({ length: 600 }, (_, k) => +(36 + 2 * Math.sin((t - 599 + k) / 55)).toFixed(1)) },
     ],
     drives: [
-      { letter: "C:", name: "Demo NVMe 1TB", temp: +w(44, 4, 5).toFixed(1), used_pct: 63.2, used_gb: 589.1, total_gb: 931.5,
-        read_mbs: +Math.max(0, w(120, 110, 4)).toFixed(1), write_mbs: +Math.max(0, w(40, 38, 6)).toFixed(1) },
-      { letter: "Z:", name: "Demo NVMe 2TB", temp: +w(33, 3, 7).toFixed(1), used_pct: 41.7, used_gb: 776.9, total_gb: 1863.0,
-        read_mbs: +Math.max(0, w(5, 6, 5)).toFixed(1), write_mbs: 0 },
+      { letter: "C:", name: "Demo NVMe 1TB", kind: "NVMe", temp: +w(44, 4, 5).toFixed(1), used_pct: 63.2, used_gb: 589.1, total_gb: 931.5,
+        read_mbs: +Math.max(0, w(120, 110, 4)).toFixed(1), write_mbs: +Math.max(0, w(40, 38, 6)).toFixed(1), activity_pct: 12 },
+      { letter: "Z:", name: "Demo HDD 2TB", kind: "HDD", temp: +w(33, 3, 7).toFixed(1), used_pct: 41.7, used_gb: 776.9, total_gb: 1863.0,
+        read_mbs: +Math.max(0, w(5, 6, 5)).toFixed(1), write_mbs: 0, activity_pct: 3 },
     ],
     network: (() => {
       const dl = [], up = [];

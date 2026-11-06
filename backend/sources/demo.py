@@ -105,6 +105,8 @@ class DemoSource:
                     round(wobble(44, 4, 5), 1), "°C", "temp"),
             Reading("S.M.A.R.T.: Demo NVMe 2TB (0001) [Z:]", "Температура диска",
                     round(wobble(33, 3, 7), 1), "°C", "temp"),
+            Reading("S.M.A.R.T.: Demo NVMe 1TB (0000) [C:]", "Доступный резерв диска", 100.0, "%", "usage"),
+            Reading("S.M.A.R.T.: Demo NVMe 2TB (0001) [Z:]", "Доступный резерв диска", 100.0, "%", "usage"),
             Reading("Сеть: Demo Ethernet - Ethernet", "Текущая скорость скачивания",
                     round(max(0, wobble(1500, 1200, 5)), 1), "KB/s", "other"),
             Reading("Сеть: Demo Ethernet - Ethernet", "Текущая скорость отправки",

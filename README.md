@@ -30,6 +30,9 @@
 
 ## Запуск из исходников
 
+На Windows с готовым окружением `.venv` достаточно дважды щёлкнуть по `start.bat`.
+Вручную:
+
 ```bash
 pip install -r requirements.txt
 python -m backend.main                 # окно
@@ -60,6 +63,7 @@ python -m backend.main --list          # вывести все датчики и
 - `window.width` / `window.height` — размер под ваш портативный экран.
 - `window.frameless: true` — окно без рамки (выглядит как чистая панель; тащится мышью).
 - `poll_interval_ms` — период обновления (по умолчанию 1000 мс).
+- `drives` — какие диски показывать, например `["C:", "Z:"]`; `null` — все диски с датчиком.
 - `background` — анимированный фон: `"letter-glitch"` или `"none"` (без фона).
   Файлы фонов лежат в `web/backgrounds/`.
 
