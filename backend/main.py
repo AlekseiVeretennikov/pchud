@@ -51,6 +51,7 @@ DEFAULT_CONFIG = {
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
     "background": "letter-glitch",  # файл из web/backgrounds/ или "none"
+    "label_glitch": True,  # редкая замена букв в подписях
 }
 
 
@@ -81,6 +82,7 @@ class Api:
         return {
             "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
             "background": self._config["background"],
+            "label_glitch": self._config["label_glitch"],
         }
 
 

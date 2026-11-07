@@ -101,6 +101,14 @@ function setNumber(key, value) {
   document.querySelectorAll(`[data-bind="${key}"]`).forEach((el) => countText(el, value));
 }
 
+// Проценты VRAM и RAM: тот же цвет, что у их шкалы
+function setPercent(key, value) {
+  setNumber(key, value != null ? Math.round(value) : "--");
+  document.querySelectorAll(`[data-bind="${key}"]`).forEach((el) => {
+    el.style.color = value != null ? colorForLoad(value) : "var(--ink-dim)";
+  });
+}
+
 function fmt(metric, digits = 0) {
   if (!metric || metric.value === undefined || metric.value === null) return "--";
   const n = Number(metric.value);
@@ -377,7 +385,7 @@ function renderGpuTiles(snap, m) {
   if (fanVal) {
     if (maxRpm) {
       countText(fanVal, maxRpm);
-      fanVal.style.color = "var(--ink)";
+      fanVal.style.color = "var(--cyan)";
     } else {
       countText(fanVal, fans.length ? "стоп" : "--");
       fanVal.style.color = "var(--ink-dim)";
@@ -402,6 +410,7 @@ function renderGpuTiles(snap, m) {
     countText(pcieVal, m.pcie_speed
       ? `${Number(m.pcie_speed.value).toFixed(0)} GT/s`
       : "--");
+    pcieVal.style.color = m.pcie_speed ? "var(--cyan)" : "var(--ink-dim)";
   }
   const busCanvas = document.getElementById("gpu-bus-spark");
   if (busCanvas) drawSpark(busCanvas, hist.bus || [], 100, 0, MB_HIST_LEN, false);
@@ -587,7 +596,7 @@ function render(snap) {
   const vramTotal = Number(snap.vram_total_gb) || null;
   const vramPct   = vramUsed != null && vramTotal ? (vramUsed / vramTotal) * 100
                   : (m.vram_load ? Number(m.vram_load.value) : null);
-  setNumber("vram_pct",   vramPct  != null ? Math.round(vramPct) : "--");
+  setPercent("vram_pct", vramPct);
   setNumber("vram_used",  vramUsed != null ? `${vramUsed.toFixed(1)} GB` : "--");
   setNumber("vram_total", vramTotal ? `${vramTotal} GB` : "--");
   if (vramPct != null) updateBar("vram_pct", vramPct, colorForLoad);
@@ -597,7 +606,7 @@ function render(snap) {
   const ramTotal = ramUsed != null && ramAvail != null ? ramUsed + ramAvail : null;
   const ramPct   = m.ram_load ? Number(m.ram_load.value)
                  : (ramTotal ? (ramUsed / ramTotal) * 100 : null);
-  setNumber("ram_pct",   ramPct   != null ? Math.round(ramPct) : "--");
+  setPercent("ram_pct", ramPct);
   setNumber("ram_used",  ramUsed  != null ? `${ramUsed.toFixed(1)} GB` : "--");
   setNumber("ram_total", ramTotal != null ? `${ramTotal.toFixed(1)} GB` : "--");
   if (ramPct != null) updateBar("ram_pct", ramPct, colorForLoad);
@@ -832,25 +841,24 @@ function demoSnapshot() {
   };
 }
 
-/* ── анимированный фон: имя берётся из config.json ("none" = без фона) ── */
-async function startBackground() {
-  let name = "letter-glitch";  // без pywebview (страница открыта в браузере)
-  if (window.pywebview) {
-    const config = await window.pywebview.api.get_config();
-    name = config.background;
-  }
-  const background = (window.HudBackgrounds || {})[name];
+/* ── оформление из config.json: фон ("none" = без фона) и эффект подписей ── */
+async function startEffects() {
+  // значения по умолчанию: без pywebview (страница открыта в браузере)
+  let config = { background: "letter-glitch", label_glitch: true };
+  if (window.pywebview) config = await window.pywebview.api.get_config();
+  const background = (window.HudBackgrounds || {})[config.background];
   if (background) background.start(document.getElementById("hud-bg"));
+  if (config.label_glitch) window.HudLabelGlitch.start();
 }
 
 window.addEventListener("pywebviewready", () => {
-  startBackground();
+  startEffects();
   pollLoop(1000);
 });
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     if (!window.pywebview) {
-      startBackground();
+      startEffects();
       pollLoop(1000);
     }
   }, 300);

@@ -35,6 +35,19 @@ html, body {
 }
 .hud-bg canvas { display: block; width: 100%; height: 100%; }
 
+/* ── эффект подписей (label-glitch.js) ────────────── */
+.label-glitching { white-space: nowrap; }
+.label-glitch-cell {
+  display: inline-block;
+  overflow: visible;
+  white-space: pre;
+}
+/* шрифт остаётся шрифтом подписи: другой шрифт увеличил бы высоту строки на 2 px */
+.label-glitch-cell--active {
+  color: var(--cyan);
+  text-align: center;
+}
+
 /* ── сетка ────────────────────────────────────────── */
 .hud {
   position: relative;  /* поверх .hud-bg */
