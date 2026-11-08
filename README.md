@@ -19,20 +19,26 @@
 
 ## Быстрый старт
 
-1. **HWiNFO** — источник показаний. Установите, откройте **Настройки** и поставьте галку
+Нужны три программы: HWiNFO (показания датчиков), RTSS (FPS в играх) и сам PC HUD.
+
+1. **HWiNFO** — источник показаний. [Скачайте](https://www.hwinfo.com/download/) и установите, откройте **Настройки** и поставьте галку
    **Поддержка совместно используемой памяти** (в английской версии — **Shared Memory Support**).
    Оставьте HWiNFO запущенным с открытым окном датчиков. В бесплатной версии общая память
    отключается через 12 часов — тогда перезапустите HWiNFO.
 
    ![HWiNFO: галка Shared Memory](docs/hwinfo-shared-memory.png)
 
-2. **RivaTuner Statistics Server (RTSS)** — источник FPS, ставится вместе с MSI Afterburner.
+2. **RivaTuner Statistics Server (RTSS)** — источник FPS, ставится вместе с
+   [MSI Afterburner](https://www.msi.com/Landing/afterburner/graphics-cards) (галка RTSS в установщике).
    Оставьте его запущенным, а **Application detection level** — не ниже **Low**:
    при **None** RTSS не видит игру, и панель FPS останется пустой.
 
    ![RTSS: Application detection level](docs/rtss-settings.png)
 
-3. Запустите `PC-HUD.exe`. Настраивать ничего не нужно: HUD сам найдёт датчики.
+3. Скачайте **PC-HUD.exe** со страницы
+   [последнего релиза](https://github.com/AlekseiVeretennikov/pchud/releases/latest)
+   (раздел **Assets**), положите в любую папку и запустите. Python и установка не нужны,
+   настраивать ничего не нужно: HUD сам найдёт датчики.
    Windows может показать «Система Windows защитила ваш компьютер», потому что программа
    не подписана: «Подробнее» → «Выполнить в любом случае».
 4. Перетащите окно на портативный экран и разверните.
