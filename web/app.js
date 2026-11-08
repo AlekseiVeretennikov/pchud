@@ -201,47 +201,68 @@ function drawSpark(canvas, hist, maxVal = 100, minVal = 0, maxLen = SPARK_LEN, a
 }
 
 /* ── рендер ядер ─────────────────────────────────────── */
-function renderCores(cores, metrics) {
-  const ccd1El = document.getElementById("cores-ccd1");
-  const ccd2El = document.getElementById("cores-ccd2");
-  if (!ccd1El || !ccd2El || !cores || cores.length === 0) return;
+function renderCores(cores, groups, metrics) {
+  const root = document.getElementById("core-groups");
+  if (!root || !cores || cores.length === 0) return;
+  if (!groups || groups.length === 0) {
+    groups = [{ name: "Ядра", tag: null, vcache: false, temp_key: null, cores: cores.map((c) => c.id) }];
+  }
 
-  // Строим DOM один раз при первом рендере
-  if (!ccd1El._built) {
-    for (const c of cores) {
-      const container = c.id < 8 ? ccd1El : ccd2El;
-      const num = String(c.id + 1).padStart(2, "0");
-      const badge = c.id < 8 ? `<span class="core-chip__badge">3D</span>` : "";
-      const chip = document.createElement("div");
-      chip.className = "core-chip";
-      chip.innerHTML =
-        `<div class="core-chip__num"><span>C·${num}</span>${badge}</div>` +
-        `<div class="core-chip__clock"><span data-cc="${c.id}">--</span><i>МГц</i>` +
-          `<span class="core-chip__pct" data-cl="${c.id}">--</span></div>` +
-        `<canvas class="core-chip__spark" data-cv="${c.id}"></canvas>` +
-        `<div class="core-chip__temp"><span data-ct="${c.id}">--</span><i>°C</i></div>`;
-      container.appendChild(chip);
+  // DOM строится заново только при смене состава групп (другой процессор или источник)
+  const layout = groups.map((g) => `${g.name}:${g.cores.join(",")}`).join("|");
+  if (root.dataset.layout !== layout) {
+    root.dataset.layout = layout;
+    root.replaceChildren();
+    // на чипы отведено две строки: одна большая группа делится на две, две группы — по строке
+    const rows = groups.length === 1 && groups[0].cores.length > 8 ? 2 : 1;
+    for (const g of groups) {
+      const cols = Math.min(12, Math.max(1, Math.ceil(g.cores.length / rows)));
+      const group = document.createElement("div");
+      group.className = "ccd-group";
+      const tag = g.tag
+        ? `<span class="ccd-label__tag${g.vcache ? "" : " ccd-label__tag--dim"}">${g.tag}</span>`
+        : "";
+      group.innerHTML =
+        `<div class="ccd-label">${tag}<span class="ccd-label__name">${g.name}</span>` +
+        `<span class="ccd-label__rule"></span>` +
+        `<span class="ccd-label__temp" data-group-temp="${g.temp_key || ""}"></span></div>` +
+        `<div class="core-grid${cols > 8 ? " core-grid--dense" : ""}" style="--cols:${cols}"></div>`;
+      const grid = group.querySelector(".core-grid");
+      for (const id of g.cores) {
+        const num = String(id + 1).padStart(2, "0");
+        const badge = g.vcache ? `<span class="core-chip__badge">3D</span>` : "";
+        const chip = document.createElement("div");
+        chip.className = "core-chip";
+        chip.innerHTML =
+          `<div class="core-chip__num"><span>C·${num}</span>${badge}</div>` +
+          `<div class="core-chip__clock"><span data-cc="${id}">--</span><i>МГц</i>` +
+            `<span class="core-chip__pct" data-cl="${id}">--</span></div>` +
+          `<canvas class="core-chip__spark" data-cv="${id}"></canvas>` +
+          `<div class="core-chip__temp"><span data-ct="${id}">--</span><i>°C</i></div>`;
+        grid.appendChild(chip);
+      }
+      root.appendChild(group);
     }
-    ccd1El._built = true;
-    ccd2El._built = true;
   }
 
   // Обновляем значения
   for (const c of cores) {
-    if (c.clock != null) {
-      const el = document.querySelector(`[data-cc="${c.id}"]`);
-      if (el) countText(el, Math.round(c.clock));
-    }
+    const el = root.querySelector(`[data-cc="${c.id}"]`);
+    if (!el) continue;
+    // спящее ядро: Windows его припарковала, частота из HWiNFO ничего не значит
+    el.closest(".core-chip").classList.toggle("core-chip--sleep", !!c.sleep);
+    if (c.sleep) countText(el, "сон");
+    else if (c.clock != null) countText(el, Math.round(c.clock));
 
     // спарклайн: история приходит из бэкенда (deque на 60 точек)
-    const canvas = document.querySelector(`[data-cv="${c.id}"]`);
+    const canvas = root.querySelector(`[data-cv="${c.id}"]`);
     if (canvas) drawSpark(canvas, c.history);
 
     if (c.load != null) {
-      const pct = document.querySelector(`[data-cl="${c.id}"]`);
+      const pct = root.querySelector(`[data-cl="${c.id}"]`);
       if (pct) countText(pct, `${Math.round(Math.min(100, Math.max(0, c.load)))}%`);
     }
-    const ct = document.querySelector(`[data-ct="${c.id}"]`);
+    const ct = root.querySelector(`[data-ct="${c.id}"]`);
     if (ct) {
       if (c.temp != null) {
         countText(ct, Math.round(c.temp));
@@ -253,19 +274,17 @@ function renderCores(cores, metrics) {
     }
   }
 
-  // Температуры CCD
-  const t1El = document.getElementById("ccd1-temp");
-  const t2El = document.getElementById("ccd2-temp");
-  if (t1El && metrics.ccd1_temp) {
-    const v = Number(metrics.ccd1_temp.value);
-    countText(t1El, `${Math.round(v)}°C`);
-    t1El.style.color = colorForTemp(v);
-  }
-  if (t2El && metrics.ccd2_temp) {
-    const v = Number(metrics.ccd2_temp.value);
-    countText(t2El, `${Math.round(v)}°C`);
-    t2El.style.color = colorForTemp(v);
-  }
+  // Температуры групп (CCD), если датчик есть
+  root.querySelectorAll("[data-group-temp]").forEach((el) => {
+    const metric = metrics[el.dataset.groupTemp];
+    if (metric) {
+      const v = Number(metric.value);
+      countText(el, `${Math.round(v)}°C`);
+      el.style.color = colorForTemp(v);
+    } else {
+      el.textContent = "";
+    }
+  });
 }
 
 /* ── плитки материнской платы ────────────────────────── */
@@ -652,7 +671,8 @@ function render(snap) {
   } else {
     if (fpsPanel) fpsPanel.classList.add("fps-panel--idle");
     setNumber("fps", "--");
-    if (fpsApp) fpsApp.textContent = "нет активной игры";
+    // без RTSS FPS взять неоткуда — подсказываем, что его нужно запустить
+    if (fpsApp) fpsApp.textContent = snap.rtss_running ? "нет активной игры" : "RTSS не запущен";
     if (fpsFt) countText(fpsFt, "--");
     if (fpsLow) countText(fpsLow, "--");
   }
@@ -674,7 +694,7 @@ function render(snap) {
 
   renderMb(snap, m);
   renderGpuTiles(snap, m);
-  renderCores(snap.cores || [], m);
+  renderCores(snap.cores || [], snap.core_groups, m);
   renderDrives(snap.drives);
   renderNetwork(snap.network);
 
@@ -688,6 +708,8 @@ function render(snap) {
   if (toast) {
     if (snap.warning) { toast.textContent = snap.warning; toast.hidden = false; }
     else { toast.hidden = true; }
+    // демо-данные легко принять за настоящие — предупреждение крупнее обычного
+    toast.classList.toggle("toast--demo", snap.source === "demo");
   }
 }
 

@@ -53,7 +53,7 @@ html, body {
   position: relative;  /* поверх .hud-bg */
   width: 100vw; height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);  /* строго пополам, независимо от содержимого */
   /* нижний ряд фиксированный, весь остаток высоты — карточкам CPU/GPU */
   grid-template-rows: minmax(0, 1fr) 200px auto;
   grid-template-areas:
@@ -387,12 +387,25 @@ html, body {
 .ccd-label__rule { flex: 1; height: 1px; background: var(--line); }
 .ccd-label__temp { color: var(--cyan); min-width: 36px; text-align: right; }
 
-/* сетка из 8 чипов на строку */
+/* группы ядер ведут себя как прямые дети .card__cores, чтобы отступы между секциями сохранились */
+.core-groups { display: contents; }
+
+/* сетка чипов: число колонок задаёт app.js по числу ядер */
 .core-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(var(--cols, 8), minmax(0, 1fr));
   gap: 7px;
 }
+/* больше 8 колонок: чипы узкие, без подписи "МГц" и с меньшим шрифтом */
+.core-grid--dense .core-chip { padding: 6px 6px; }
+.core-grid--dense .core-chip__clock { font-size: 14px; }
+.core-grid--dense .core-chip__clock i { display: none; }
+.core-grid--dense .core-chip__pct { font-size: 12px; }
+
+/* спящее (припаркованное Windows) ядро */
+.core-chip--sleep { opacity: 0.45; }
+.core-chip--sleep .core-chip__clock span[data-cc] { color: var(--ink-dim); }
+.core-chip--sleep .core-chip__clock i { visibility: hidden; }
 
 /* один чип ядра: шапка / частота / спарклайн / температура.
    Плотная вертикаль, чтобы обе строки CCD помещались без скролла. */
@@ -552,6 +565,13 @@ html, body {
   max-width: 80vw;
   background: #2a1d12; border: 1px solid var(--amber); color: var(--amber);
   padding: 10px 16px; border-radius: 10px; font-size: 13px;
+}
+.toast--demo {
+  bottom: 50%; transform: translate(-50%, 50%);
+  max-width: 640px;
+  padding: 18px 24px;
+  font-size: 17px; line-height: 1.45; text-align: center;
+  box-shadow: 0 0 0 9999px rgba(6, 8, 16, 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

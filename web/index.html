@@ -48,26 +48,8 @@
 
       <!-- Секция по ядрам — внутри того же блока CPU -->
       <div class="card__cores">
-        <!-- CCD1: 3D V-Cache, ядра 1–8 -->
-        <div class="ccd-group">
-          <div class="ccd-label">
-            <span class="ccd-label__tag">3D V-Cache</span>
-            <span class="ccd-label__name">CCD1</span>
-            <span class="ccd-label__rule"></span>
-            <span class="ccd-label__temp" id="ccd1-temp">—</span>
-          </div>
-          <div class="core-grid" id="cores-ccd1"></div>
-        </div>
-        <!-- CCD2: Standard, ядра 9–16 -->
-        <div class="ccd-group">
-          <div class="ccd-label">
-            <span class="ccd-label__tag ccd-label__tag--dim">Standard</span>
-            <span class="ccd-label__name">CCD2</span>
-            <span class="ccd-label__rule"></span>
-            <span class="ccd-label__temp" id="ccd2-temp">—</span>
-          </div>
-          <div class="core-grid" id="cores-ccd2"></div>
-        </div>
+        <!-- Группы ядер (CCD или одна общая) строятся в app.js по данным процессора -->
+        <div class="core-groups" id="core-groups"></div>
         <!-- Материнская плата: VRM / чипсет / корпус -->
         <div class="ccd-group">
           <div class="ccd-label">

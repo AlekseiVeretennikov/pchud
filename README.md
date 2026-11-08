@@ -9,11 +9,12 @@
 ## Возможности
 
 - CPU и GPU: температура (круговая шкала), нагрузка, частота, мощность.
-- RAM, VRAM, FPS.
-- Два источника данных с автовыбором: HWiNFO → LibreHardwareMonitor → демо.
+- Ядра процессора: частота, нагрузка и температура каждого ядра, группы CCD,
+  метка 3D V-Cache у X3D и метка «сон» у ядер, которые Windows усыпила.
+- RAM и VRAM, температуры планок памяти, все диски (NVMe, SSD, HDD), сеть, FPS.
+- Работает без настройки: датчики, основная видеокарта и объём видеопамяти находятся сами.
+- Если HWiNFO не найден, HUD говорит, что сделать, и подключается сам, как только HWiNFO появится.
 - Цветовое кодирование: спокойный → янтарный → красный по мере роста нагрузки/температуры.
-- Кросс-машинность: датчики ищутся по типу и ключевым словам, а не по точным именам,
-  поэтому работает и на Intel/Radeon, не только на конкретной сборке.
 - Один `.exe`, не требует установленного Python у конечного пользователя.
 
 ## Быстрый старт
@@ -31,7 +32,9 @@
 
    ![RTSS: Application detection level](docs/rtss-settings.png)
 
-3. Запустите HUD: дважды щёлкните по `start.bat` (или по `PC-HUD.exe`, если собрали его через `build.bat`).
+3. Запустите `PC-HUD.exe`. Настраивать ничего не нужно: HUD сам найдёт датчики.
+   Windows может показать «Система Windows защитила ваш компьютер», потому что программа
+   не подписана: «Подробнее» → «Выполнить в любом случае».
 4. Перетащите окно на портативный экран и разверните.
 
 Вместо HWiNFO можно использовать **LibreHardwareMonitor**: Options → **Remote Web Server** → Run
@@ -66,7 +69,8 @@ python -m backend.main --list          # вывести все датчики и
 
 ## Настройка под свой ПК
 
-Скопируйте `config.example.json` в `config.json` рядом с программой.
+Обычно не нужна. Чтобы что-то поменять, скопируйте `config.example.json` в `config.json`
+рядом с программой.
 
 - `source` — `"auto"`, `"hwinfo"`, `"libre"` или `"demo"`.
 - `window.width` / `window.height` — размер под ваш портативный экран.
@@ -100,13 +104,17 @@ python -m backend.main --list
 `gpu_temp`, `gpu_load`, `gpu_clock`, `gpu_power`, `vram_load`, `vram_used`,
 `ram_load`, `ram_used`, `ram_avail`, `fps`.
 
+Если HUD что-то определил неправильно, пришлите вывод `--list` автору: правило поиска
+лучше поправить для всех, чем прописывать вручную.
+
 ## Сборка .exe
 
 ```bash
 build.bat
 ```
 
-Результат — `dist\PC-HUD.exe`. Положите рядом `config.json`, если нужна своя настройка.
+Результат — `dist\PC-HUD.exe`, один файл. Нужен Python с окружением `.venv`; PyInstaller
+скрипт поставит сам. Положите рядом `config.json`, если нужна своя настройка.
 
 ## Структура
 
@@ -114,16 +122,21 @@ build.bat
 pchud/
 ├── backend/
 │   ├── main.py            запуск, окно pywebview, режимы --list/--demo
-│   ├── manager.py         автовыбор источника
+│   ├── manager.py         автовыбор источника и переподключение
 │   ├── normalize.py       правила сопоставления датчиков -> метрики
+│   ├── diagnose.py        подсказка, что не так с HWiNFO
+│   ├── parking.py         спящие (припаркованные) ядра из Windows
 │   └── sources/
 │       ├── hwinfo.py      чтение Shared Memory
+│       ├── rtss.py        FPS из RivaTuner Statistics Server
 │       ├── libre.py       чтение веб-сервера LibreHardwareMonitor
 │       └── demo.py        синтетические данные
 ├── web/                   HTML/CSS/JS дашборда
+├── run_hud.py             точка входа для .exe
+├── start.bat              запуск из исходников
+├── build.bat              сборка dist\PC-HUD.exe
 ├── config.example.json
-├── requirements.txt
-└── build.bat
+└── requirements.txt
 ```
 
 ## Лицензия

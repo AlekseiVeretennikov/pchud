@@ -13,10 +13,13 @@
 from __future__ import annotations
 
 import math
+import time
 import sys
 from collections import deque
 
-from .normalize import Metric, normalize, collect_cores, collect_dimms, collect_drives, collect_network
+from .normalize import Metric, normalize, collect_cores, core_groups, collect_dimms, collect_drives, collect_network
+from .diagnose import hwinfo_hint
+from .parking import CoreParking
 from .sources.demo import DemoSource
 
 try:
@@ -61,7 +64,11 @@ class SourceManager:
         self._dimm_hist: dict[int, deque] = {}
         # RTSS — дополнительный канал (только FPS игры), работает поверх основного
         self._rtss = RtssSource() if (RtssSource is not None and sys.platform == "win32") else None
-        self._select(config.get("source", "auto"))
+        # статус парковки ядер из Windows: спящие ядра помечаются в HUD
+        self._parking = CoreParking()
+        self._preferred = config.get("source", "auto")
+        self._next_retry = 0.0
+        self._select(self._preferred)
 
     def _candidates(self) -> list:
         out = []
@@ -108,11 +115,10 @@ class SourceManager:
                 "к датчикам. В играх с агрессивными античитами (например, Vanguard) "
                 "это может вызвать проблемы. Для таких игр предпочтительнее HWiNFO."
             )
+        elif src.name == "demo" and self._preferred == "demo":
+            self.warning = "Демо-режим: показаны выдуманные данные (source: demo или запуск с --demo)."
         elif src.name == "demo":
-            self.warning = (
-                "Реальные источники не найдены — показаны демо-данные. "
-                "Включите Shared Memory в HWiNFO или Remote Web Server в LibreHardwareMonitor."
-            )
+            self.warning = "Показаны демо-данные, это не ваш ПК. " + hwinfo_hint(HWiNFOSource)
         else:
             self.warning = None
         # демо умеет генерировать «прошлое» — спарклайны полны сразу, удобно отлаживать
@@ -147,7 +153,23 @@ class SourceManager:
             except Exception:
                 return []
 
+    def _retry_real_source(self) -> None:
+        """В демо-режиме раз в 5 секунд снова ищем настоящий источник.
+
+        HUD могли запустить раньше HWiNFO, или HWiNFO перезапустили после
+        12-часового лимита — тогда переключаемся сами, без перезапуска HUD.
+        """
+        if self.active_name != "demo" or self._preferred == "demo":
+            return
+        now = time.monotonic()
+        if now < self._next_retry:
+            return
+        self._next_retry = now + 5
+        self._broken.clear()
+        self._select(self._preferred)
+
     def snapshot(self) -> dict:
+        self._retry_real_source()
         readings = self._read_active()
         metrics = normalize(readings, self.overrides)
         cores = collect_cores(readings)
@@ -160,10 +182,18 @@ class SourceManager:
             hist.append(min(100.0, max(0.0, load)))
             c["history"] = list(hist)
 
+        parked = self._parking.parked_cores(len(cores))
+        for c in cores:
+            c["sleep"] = c["id"] in parked
+
+        cpu_metric = metrics.get("cpu_temp") or metrics.get("cpu_load")
+        groups = core_groups(cores, cpu_metric.raw_sensor if cpu_metric else "")
+
         # У HWiNFO нет агрегированной частоты CPU — берём максимум по ядрам
         # (если пользователь не привязал cpu_clock явно в конфиге).
+        # Спящие ядра не считаем: их частота в HWiNFO не отражает работу.
         if "cpu_clock" not in self.overrides:
-            clocks = [c["clock"] for c in cores if c.get("clock")]
+            clocks = [c["clock"] for c in cores if c.get("clock") and not c["sleep"]]
             if clocks:
                 base = metrics.get("cpu_clock")
                 metrics["cpu_clock"] = Metric(
@@ -265,12 +295,15 @@ class SourceManager:
             "dimms": dimms,
             "drives": collect_drives(readings, self.config.get("drives")),
             "network": network,
-            "vram_total_gb": self.config.get("vram_total_gb"),
+            # из конфига, иначе из датчиков (занятая + свободная видеопамять)
+            "vram_total_gb": self.config.get("vram_total_gb")
+                             or (metrics["vram_total"].value if "vram_total" in metrics else None),
             "metrics": {
                 k: {"value": m.value, "unit": m.unit, "sensor": m.raw_sensor, "label": m.raw_label}
                 for k, m in metrics.items()
             },
             "cores": cores,
+            "core_groups": groups,
         }
 
     def list_raw(self) -> list:

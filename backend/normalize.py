@@ -39,6 +39,9 @@ DEFAULT_RULES: list[MetricRule] = [
                label_any=["total", "usage", "utilization"], label_not=["gpu", "memory", "core #"]),
     MetricRule("cpu_clock", "clock", sensor_any=["cpu", "ryzen", "intel", "core"],
                label_any=["core", "cpu", "clock"], label_not=["gpu", "bus", "memory"]),
+    # мощность всего процессора, а не отдельного домена (PPT, ядра)
+    MetricRule("cpu_power", "power",
+               label_any=["полная потребляемая мощность цп", "cpu package power"]),
     MetricRule("cpu_power", "power", sensor_any=["cpu", "ryzen", "intel"],
                label_any=["package", "cpu", "ppt"], label_not=["gpu"]),
     MetricRule("ccd1_temp", "temp", sensor_any=["cpu", "ryzen", "amd"],
@@ -93,8 +96,17 @@ DEFAULT_RULES: list[MetricRule] = [
                label_not=["memory", "vram", "video", "памяти", "эффективная", "видео"]),
     MetricRule("gpu_power", "power", sensor_any=["gpu", "geforce", "radeon", "nvidia"],
                label_any=["gpu", "power", "tgp", "asic"]),
+    # HWiNFO: "Выделенная память ГП" / "GPU Memory Allocated" — вся занятая видеопамять
+    # (в отличие от "Выделенная память D3D ГП", где только память Direct3D)
+    MetricRule("vram_used", None, sensor_any=["gpu", "geforce", "radeon", "nvidia"],
+               label_any=["выделенная память гп", "gpu memory allocated"]),
     MetricRule("vram_used", None, sensor_any=["gpu", "geforce", "radeon", "nvidia"],
                label_any=["memory used", "vram used", "used dedicated"]),
+    # свободная видеопамять: вместе с занятой даёт полный объём VRAM
+    MetricRule("vram_avail", None, sensor_any=["gpu", "geforce", "radeon", "nvidia"],
+               label_any=["доступная память гп", "gpu memory available"]),
+    MetricRule("vram_load", "usage", sensor_any=["gpu", "geforce", "radeon", "nvidia"],
+               label_any=["использование памяти гп"]),
     MetricRule("vram_load", "usage", sensor_any=["gpu", "geforce", "radeon", "nvidia"],
                label_any=["memory", "vram"], label_all=["usage"]),
     # LHM называет этот датчик просто "GPU Memory" (без слова usage в метке)
@@ -112,6 +124,10 @@ DEFAULT_RULES: list[MetricRule] = [
     MetricRule("pcie_speed", None, sensor_any=["dgpu", "geforce", "nvidia", "radeon", "gpu"],
                label_any=["скорость соединения pcie", "pcie link speed"]),
 
+    # HWiNFO отдаёт показатели физической памяти с типом "other", поэтому тип не проверяем
+    MetricRule("ram_load", None, label_any=["загрузка физической памяти", "physical memory load"]),
+    MetricRule("ram_used", None, label_any=["используемая физическая память", "physical memory used"]),
+    MetricRule("ram_avail", None, label_any=["доступная физическая память", "physical memory available"]),
     MetricRule("ram_load", "usage", label_any=["memory"], label_all=["usage"],
                label_not=["gpu", "vram", "virtual"]),
     # LHM: метка "Memory" в группе "Total Memory"
@@ -147,6 +163,33 @@ class Metric:
 
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").lower()).strip()
+
+
+_GPU_WORDS = ("gpu", "geforce", "radeon", "nvidia")
+_MOBO_WORDS = ("nuvoton", "nct", "it87", "ite ", "motherboard", "mainboard")
+
+
+def _gpu_score(sensor: str) -> int:
+    """Чем выше, тем вероятнее это основная (дискретная) видеокарта.
+
+    HWiNFO при двух видеокартах пишет "dGPU [#0]" и "iGPU [#1]"; LHM и HWiNFO
+    с одной картой — просто имя модели, тогда встроенную узнаём по названию.
+    """
+    s = _norm(sensor)
+    if "igpu" in s:
+        return -10
+    score = 10 if "dgpu" in s else 0
+    if any(w in s for w in ("geforce", "rtx", "gtx", "radeon rx", "arc a", "arc b")):
+        score += 5
+    if any(w in s for w in ("radeon(tm) graphics", "radeon graphics", "uhd graphics",
+                            "iris", "hd graphics")):
+        score -= 5
+    return score
+
+
+def _fan_number(label: str) -> int:
+    m = re.search(r"\d+", label)
+    return int(m.group()) if m else 0
 
 
 def _matches(reading, rule: MetricRule) -> bool:
@@ -195,20 +238,41 @@ def normalize(readings: list, overrides: dict | None = None) -> dict[str, Metric
             result[key] = Metric(key, r.value, r.unit, r.sensor, r.label)
             break
 
-    # 2) правила по умолчанию (не перетирают то, что уже задал пользователь)
+    # 2) правила по умолчанию (не перетирают то, что уже задал пользователь).
+    # Для датчиков видеокарты сначала смотрим основную карту, а не встроенную.
+    gpu_first = sorted(readings, key=lambda r: -_gpu_score(r.sensor))
     for rule in DEFAULT_RULES:
         if rule.key in result:
             continue
-        for r in readings:
+        pool = gpu_first if any(w in rule.sensor_any for w in _GPU_WORDS) else readings
+        for r in pool:
             if _matches(r, rule):
                 result[rule.key] = Metric(rule.key, r.value, r.unit, r.sensor, r.label)
                 break
 
-    # 3) объёмы памяти приводим к ГБ (HWiNFO отдаёт МБ, дашборд рассчитан на ГБ)
+    # 3) вентиляторы корпуса с платы: работающие, кроме процессорного и помпы
+    if not any(k.startswith("fan_sys") for k in overrides):
+        fans = [
+            r for r in readings
+            if r.kind == "fan" and r.value > 0
+            and any(w in _norm(r.sensor) for w in _MOBO_WORDS)
+            and not any(w in _norm(r.label) for w in ("pump", "помпа", "cpu", "цп"))
+        ]
+        fans.sort(key=lambda r: _fan_number(r.label))
+        for i, r in enumerate(fans[:3], start=1):
+            result[f"fan_sys{i}"] = Metric(f"fan_sys{i}", r.value, r.unit, r.sensor, r.label)
+
+    # 4) объёмы памяти приводим к ГБ (HWiNFO отдаёт МБ, дашборд рассчитан на ГБ)
     for m in result.values():
         if m.unit.strip().lower() in ("мб", "mb"):
             m.value = round(m.value / 1024, 1)
             m.unit = "GB"
+
+    # 5) полный объём видеопамяти = занятая + свободная, округлённо до целых ГБ
+    used, avail = result.get("vram_used"), result.get("vram_avail")
+    if used and avail and used.unit == avail.unit == "GB":
+        result["vram_total"] = Metric("vram_total", round(used.value + avail.value), "GB",
+                                      used.raw_sensor, "занято + доступно")
 
     return result
 
@@ -223,6 +287,7 @@ def collect_cores(readings: list) -> list:
     thread0: dict[int, float] = {}
     thread1: dict[int, float] = {}
     temps:   dict[int, float] = {}
+    ccds:    dict[int, int] = {}    # номер CCD из подписи HWiNFO "Core8 (CCD2)"
 
     for r in readings:
         sensor = _norm(r.sensor)
@@ -271,9 +336,11 @@ def collect_cores(readings: list) -> list:
         elif r.kind == "temp":
             # HWiNFO: "Core N" или "CoreN (CCDX)" (0-based)
             # LHM не предоставляет per-core temp для AMD — только CCD1/CCD2 (Tdie)
-            m = re.fullmatch(r"core\s*(\d+)(?:\s*\(ccd\d+\))?", label)
+            m = re.fullmatch(r"core\s*(\d+)(?:\s*\(ccd(\d+)\))?", label)
             if m:
                 temps[int(m.group(1))] = float(r.value)
+                if m.group(2):
+                    ccds[int(m.group(1))] = int(m.group(2))
 
     # Усредняем оба потока на ядро
     for cid, t1 in thread1.items():
@@ -288,9 +355,35 @@ def collect_cores(readings: list) -> list:
 
     all_ids = sorted(set(list(clocks) + list(thread0)))
     return [
-        {"id": cid, "clock": clocks.get(cid), "load": _pct(thread0.get(cid)), "temp": temps.get(cid)}
+        {"id": cid, "clock": clocks.get(cid), "load": _pct(thread0.get(cid)),
+         "temp": temps.get(cid), "ccd": ccds.get(cid)}
         for cid in all_ids
     ]
+
+
+def core_groups(cores: list, cpu_name: str) -> list:
+    """Группы ядер для панели CPU: по CCD, если HWiNFO их подписал, иначе одна группа.
+
+    3D V-Cache у моделей X3D: при двух CCD кэш стоит на первом (7950X3D, 9950X3D),
+    при одном CCD (7800X3D, 9800X3D) — на всех ядрах.
+    Возвращает [{name, tag, vcache, temp_key, cores: [id]}].
+    """
+    x3d = "x3d" in _norm(cpu_name)
+    ccd_ids = sorted({c["ccd"] for c in cores if c.get("ccd")})
+    if ccd_ids and all(c.get("ccd") for c in cores):
+        groups = []
+        for i, ccd in enumerate(ccd_ids):
+            vcache = x3d and (i == 0 or len(ccd_ids) == 1)
+            tag = "3D V-Cache" if vcache else ("Standard" if x3d else None)
+            groups.append({
+                "name": f"CCD{ccd}", "tag": tag, "vcache": vcache, "temp_key": f"ccd{ccd}_temp",
+                "cores": [c["id"] for c in cores if c["ccd"] == ccd],
+            })
+        return groups
+    return [{
+        "name": "Ядра", "tag": "3D V-Cache" if x3d else None, "vcache": x3d,
+        "temp_key": None, "cores": [c["id"] for c in cores],
+    }]
 
 
 # Сенсор диска HWiNFO: "S.M.A.R.T.: SAMSUNG MZVL21T0HCLR-00B00 (S676NL0W662063) [C:]"
