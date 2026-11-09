@@ -50,7 +50,7 @@ DEFAULT_CONFIG = {
     "metric_overrides": {},
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
-    "background": "letter-glitch",  # файл из web/backgrounds/ или "none"
+    "background": "cipher-rain",  # файл из web/backgrounds/ или "none"
     "label_glitch": True,  # редкая замена букв в подписях
 }
 

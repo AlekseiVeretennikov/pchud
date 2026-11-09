@@ -2,7 +2,7 @@
   "source": "auto",
   "libre_url": "http://localhost:8085/data.json",
   "poll_interval_ms": 1000,
-  "background": "letter-glitch",
+  "background": "cipher-rain",
   "label_glitch": true,
   "fullscreen": false,
   "window": {

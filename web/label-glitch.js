@@ -12,8 +12,8 @@
   const PAUSE_MAX_MS = 1200;
   const DURATION_MIN_MS = 900;   // эффекты перекрываются: подпись в эффекте повторно не выбирается
   const DURATION_MAX_MS = 1500;
-  const LABELS_MIN = 1;
-  const LABELS_MAX = 2;
+  const LABELS_MIN = 3;
+  const LABELS_MAX = 5;
   const LETTER_SHARE = 0.35;     // доля заменяемых букв, но не меньше двух
   const STEP_MS = 70;
 

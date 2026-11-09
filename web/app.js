@@ -21,7 +21,7 @@ function colorForLoad(v) {
   return "var(--cyan)";
 }
 
-/* ── плавный счёт чисел (как режим count в Count Up из React Bits) ──
+/* ── плавный счёт чисел (по мотивам эффекта Count Up, своя реализация) ──
    Анимирует все числа в строке: "Vcore 1.136 В · SoC 1.312 В" считается по обоим значениям.
    Если текст изменился не только в числах ("--" -> "42°C"), он заменяется сразу. */
 const COUNT_MS = 800;         // меньше интервала опроса, чтобы успевать дойти до значения
@@ -866,9 +866,11 @@ function demoSnapshot() {
 /* ── оформление из config.json: фон ("none" = без фона) и эффект подписей ── */
 async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
-  let config = { background: "letter-glitch", label_glitch: true };
+  let config = { background: "cipher-rain", label_glitch: true };
   if (window.pywebview) config = await window.pywebview.api.get_config();
-  const background = (window.HudBackgrounds || {})[config.background];
+  // "letter-glitch" — старый фон до 0.1.1; в чужих config.json он ещё встречается
+  const name = config.background === "letter-glitch" ? "cipher-rain" : config.background;
+  const background = (window.HudBackgrounds || {})[name];
   if (background) background.start(document.getElementById("hud-bg"));
   if (config.label_glitch) window.HudLabelGlitch.start();
 }
