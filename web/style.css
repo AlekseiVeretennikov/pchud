@@ -557,6 +557,21 @@ html, body {
 .dot[data-state="err"]  { background: var(--red); }
 .dot[data-state="off"]  { background: var(--ink-dim); opacity: 0.55; }
 #rtss-dot { margin-left: 10px; }
+
+/* кнопка «Отчёт»: тихая, пока на неё не навели */
+.report-btn {
+  margin-left: 10px;
+  font: inherit; font-size: 12px; color: var(--ink-dim);
+  background: transparent;
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.report-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.report-btn:disabled { cursor: progress; opacity: 0.6; }
+.report-btn[data-state="ok"]  { color: var(--cyan);  border-color: var(--cyan); }
+.report-btn[data-state="err"] { color: var(--red);   border-color: var(--red); }
 .clock { margin-left: auto; font-size: 16px; color: var(--ink); }
 
 /* ── всплывающее предупреждение ───────────────────────── */

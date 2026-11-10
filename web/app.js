@@ -875,13 +875,40 @@ async function startEffects() {
   if (config.label_glitch) window.HudLabelGlitch.start();
 }
 
+/* ── кнопка «Отчёт»: скриншот + датчики в .zip на рабочем столе ── */
+function setupReportButton() {
+  const btn = document.getElementById("report-btn");
+  if (!btn || btn.dataset.ready) return;
+  btn.dataset.ready = "1";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Сохраняю…";
+    let res;
+    try { res = await window.pywebview.api.save_report(); }
+    catch (e) { res = { ok: false, error: String(e) }; }
+    btn.disabled = false;
+    btn.dataset.state = res.ok ? "ok" : "err";
+    btn.textContent = res.ok ? "Сохранено на рабочий стол" : "Не удалось сохранить";
+    btn.title = res.ok ? res.path : res.error;
+    setTimeout(() => {
+      btn.textContent = "Отчёт";
+      delete btn.dataset.state;
+      btn.title = "Скриншот и список датчиков одним архивом на рабочий стол — для автора";
+    }, 5000);
+  });
+}
+
 window.addEventListener("pywebviewready", () => {
+  setupReportButton();
   startEffects();
   pollLoop(1000);
 });
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     if (!window.pywebview) {
+      // открыто в браузере: сохранять отчёт некому
+      const btn = document.getElementById("report-btn");
+      if (btn) btn.hidden = true;
       startEffects();
       pollLoop(1000);
     }

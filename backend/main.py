@@ -74,9 +74,18 @@ class Api:
     def __init__(self, manager: SourceManager, config: dict):
         self._manager = manager
         self._config = config
+        # опрос и отчёт идут из разных потоков pywebview — не даём им читать датчики одновременно
+        self._lock = threading.Lock()
 
     def get_snapshot(self) -> dict:
-        return self._manager.snapshot()
+        with self._lock:
+            return self._manager.snapshot()
+
+    def save_report(self) -> dict:
+        """Кнопка «Отчёт»: скриншот + датчики в .zip на рабочем столе."""
+        from .report import save_report
+        with self._lock:
+            return save_report(self._manager)
 
     def get_config(self) -> dict:
         return {
