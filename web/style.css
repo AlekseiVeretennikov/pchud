@@ -115,6 +115,23 @@ html, body {
   text-overflow: ellipsis;
 }
 
+/* ── «идентификация» названий CPU/GPU (name-scan.js) ── */
+.name-scan__fresh { animation: name-fresh 0.5s ease-out; }
+@keyframes name-fresh {
+  from { color: var(--cyan); text-shadow: 0 0 8px var(--cyan); }
+  to   { color: inherit; text-shadow: none; }
+}
+.name-scan__cursor {
+  display: inline-block;
+  width: 0.55em; height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+}
+.name-scan--blink .name-scan__cursor { animation: name-cursor 0.3s steps(1) infinite; }
+@keyframes name-cursor { 50% { opacity: 0; } }
+
 /* ── плитки материнской платы (в стиле плиток ядер) ──── */
 .mb-grid {
   display: grid;

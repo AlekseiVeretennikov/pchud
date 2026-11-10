@@ -93,7 +93,9 @@ function setMbTemp(id, metric, warn, crit) {
 
 function setText(key, value) {
   document.querySelectorAll(`[data-bind="${key}"]`).forEach((el) => {
-    el.textContent = value;
+    // во время анимации названия (name-scan.js) текстом владеет она — только запоминаем значение
+    if (el.dataset.scanning) { el.dataset.full = value; return; }
+    if (el.textContent !== value) el.textContent = value;
   });
 }
 
@@ -872,7 +874,10 @@ async function startEffects() {
   const name = config.background === "letter-glitch" ? "cipher-rain" : config.background;
   const background = (window.HudBackgrounds || {})[name];
   if (background) background.start(document.getElementById("hud-bg"));
-  if (config.label_glitch) window.HudLabelGlitch.start();
+  if (config.label_glitch) {
+    window.HudLabelGlitch.start();
+    window.HudNameScan.start();
+  }
 }
 
 /* ── кнопка «Отчёт»: скриншот + датчики в .zip на рабочем столе ── */
