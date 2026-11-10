@@ -83,6 +83,11 @@ class Api:
         with self._lock:
             return self._manager.snapshot()
 
+    def launch_app(self, app: str) -> dict:
+        """Кнопки HWiNFO / RTSS в подвале: запустить программу или открыть страницу загрузки."""
+        from .launcher import launch
+        return launch(app)
+
     def save_report(self) -> dict:
         """Кнопка «Отчёт»: скриншот + датчики в .zip на рабочем столе."""
         from .report import save_report

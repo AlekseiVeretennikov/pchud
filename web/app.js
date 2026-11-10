@@ -701,10 +701,15 @@ function render(snap) {
   renderNetwork(snap.network);
 
   setText("source", snap.source_display || snap.source || "—");
-  const dot = document.querySelector(".dot");
+  const dot = document.getElementById("source-dot");
   if (dot) dot.dataset.state = snap.source === "demo" ? "warn" : (snap.warning ? "warn" : "ok");
   const rtssDot = document.getElementById("rtss-dot");
   if (rtssDot) rtssDot.dataset.state = snap.rtss_running ? "ok" : "off";
+  // подсказки кнопок подвала: что произойдёт по щелчку
+  const hwBtn = document.querySelector('.foot-app[data-app="hwinfo"]');
+  if (hwBtn) hwBtn.title = snap.source === "hwinfo" ? "HWiNFO работает" : "Запустить HWiNFO";
+  const rtBtn = document.querySelector('.foot-app[data-app="rtss"]');
+  if (rtBtn) rtBtn.title = snap.rtss_running ? "RTSS работает" : "Запустить RTSS";
 
   const toast = document.querySelector(".toast");
   if (toast) {
@@ -885,6 +890,28 @@ async function startEffects() {
   }
 }
 
+/* ── кнопки HWiNFO / RTSS в подвале: запустить программу, если она не работает ── */
+function setupAppButtons() {
+  document.querySelectorAll(".foot-app").forEach((btn) => {
+    if (btn.dataset.ready) return;
+    btn.dataset.ready = "1";
+    const note = btn.querySelector(".foot-app__note");
+    let timer = 0;
+    btn.addEventListener("click", async () => {
+      if (!window.pywebview) return;
+      btn.disabled = true;
+      let res;
+      try { res = await window.pywebview.api.launch_app(btn.dataset.app); }
+      catch (e) { res = { status: "error", message: String(e) }; }
+      btn.disabled = false;
+      note.textContent = `· ${res.message}`;
+      note.dataset.status = res.status;
+      clearTimeout(timer);
+      timer = setTimeout(() => { note.textContent = ""; delete note.dataset.status; }, 5000);
+    });
+  });
+}
+
 /* ── кнопка «Отчёт»: скриншот + датчики в .zip на рабочем столе ── */
 function setupReportButton() {
   const btn = document.getElementById("report-btn");
@@ -910,6 +937,7 @@ function setupReportButton() {
 
 window.addEventListener("pywebviewready", () => {
   setupReportButton();
+  setupAppButtons();
   startEffects();
   pollLoop(1000);
 });

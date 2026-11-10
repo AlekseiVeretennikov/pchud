@@ -654,7 +654,21 @@ body.boot-pending .hud { opacity: 0; }
 .dot[data-state="warn"] { background: var(--amber); }
 .dot[data-state="err"]  { background: var(--red); }
 .dot[data-state="off"]  { background: var(--ink-dim); opacity: 0.55; }
-#rtss-dot { margin-left: 10px; }
+/* HWiNFO / RTSS в подвале — кнопки запуска, выглядят как обычный текст подвала */
+.foot-app {
+  display: inline-flex; align-items: center; gap: 14px;
+  font: inherit; color: inherit;
+  background: transparent; border: 0; padding: 2px 4px; border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.foot-app:hover { color: var(--cyan); }
+.foot-app:disabled { cursor: progress; }
+.foot-app__note:empty { display: none; }
+.foot-app__note { margin-left: -6px; color: var(--ink-dim); }
+.foot-app__note[data-status="started"], .foot-app__note[data-status="running"] { color: var(--cyan); }
+.foot-app__note[data-status="error"], .foot-app__note[data-status="cancelled"] { color: var(--amber); }
+.foot-app + .foot-app { margin-left: 6px; }
 
 /* кнопка «Отчёт»: тихая, пока на неё не навели */
 .report-btn {

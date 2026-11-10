@@ -236,10 +236,16 @@
     </div>
 
     <footer class="hud__foot">
-      <span class="dot" data-state="ok"></span>
-      <span data-bind="source">—</span>
-      <span class="dot" id="rtss-dot" data-state="off"></span>
-      <span>RTSS</span>
+      <button class="foot-app" type="button" data-app="hwinfo" title="Запустить HWiNFO">
+        <span class="dot" id="source-dot" data-state="ok"></span>
+        <span data-bind="source">—</span>
+        <span class="foot-app__note"></span>
+      </button>
+      <button class="foot-app" type="button" data-app="rtss" title="Запустить RTSS">
+        <span class="dot" id="rtss-dot" data-state="off"></span>
+        <span>RTSS</span>
+        <span class="foot-app__note"></span>
+      </button>
       <button class="report-btn" id="report-btn" type="button"
               title="Скриншот и список датчиков одним архивом на рабочий стол — для автора">Отчёт</button>
       <span class="clock" data-bind="clock">--:--</span>
