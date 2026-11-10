@@ -102,6 +102,9 @@ DEFAULT_RULES: list[MetricRule] = [
                label_any=["выделенная память гп", "gpu memory allocated"]),
     MetricRule("vram_used", None, sensor_any=["gpu", "geforce", "radeon", "nvidia"],
                label_any=["memory used", "vram used", "used dedicated"]),
+    # Radeon: общей занятой памяти HWiNFO не даёт, только память Direct3D
+    MetricRule("vram_used", None, sensor_any=["gpu", "geforce", "radeon", "nvidia"],
+               label_any=["выделенная память d3d гп", "gpu d3d memory dedicated"]),
     # свободная видеопамять: вместе с занятой даёт полный объём VRAM
     MetricRule("vram_avail", None, sensor_any=["gpu", "geforce", "radeon", "nvidia"],
                label_any=["доступная память гп", "gpu memory available"]),
@@ -262,6 +265,19 @@ def normalize(readings: list, overrides: dict | None = None) -> dict[str, Metric
         for i, r in enumerate(fans[:3], start=1):
             result[f"fan_sys{i}"] = Metric(f"fan_sys{i}", r.value, r.unit, r.sensor, r.label)
 
+    # 3б) Radeon: "Память ГП A0/A1 Температура" … "H0/H1" — по чипам; берём максимум
+    if "gpu_mem_temp" not in result:
+        chips = [
+            r for r in gpu_first
+            if r.kind == "temp" and _gpu_score(r.sensor) > 0
+            and (("память гп" in _norm(r.label) and "температура" in _norm(r.label))
+                 or ("gpu memory" in _norm(r.label) and "temp" in _norm(r.label)))
+        ]
+        if chips:
+            hot = max(chips, key=lambda r: r.value)
+            result["gpu_mem_temp"] = Metric("gpu_mem_temp", hot.value, hot.unit, hot.sensor,
+                                            f"{hot.label} (макс. из {len(chips)})")
+
     # 4) объёмы памяти приводим к ГБ (HWiNFO отдаёт МБ, дашборд рассчитан на ГБ)
     for m in result.values():
         if m.unit.strip().lower() in ("мб", "mb"):
@@ -387,10 +403,17 @@ def core_groups(cores: list, cpu_name: str) -> list:
 
 
 # Сенсор диска HWiNFO: "S.M.A.R.T.: SAMSUNG MZVL21T0HCLR-00B00 (S676NL0W662063) [C:]"
-_RE_SMART = re.compile(r"s\.m\.a\.r\.t\.:\s*(.+?)\s*\([^)]*\)\s*\[([a-z]):\]", re.IGNORECASE)
+# Если на диске несколько разделов, HWiNFO перечисляет их: "[C:, D:]".
+_RE_SMART = re.compile(r"s\.m\.a\.r\.t\.:\s*(.+?)\s*\([^)]*\)\s*\[([a-z]:(?:\s*,\s*[a-z]:)*)\]",
+                       re.IGNORECASE)
 _DRIVE_TEMP_LABELS = ("температура диска", "drive temperature")
 # Сенсор активности диска: "Drive: XPG GAMMIX S11 Pro (2O422LC91Q1L) [Z:]"
-_RE_DRIVE_ACT = re.compile(r"^drive:.*\[([a-z]):\]")
+_RE_DRIVE_ACT = re.compile(r"^drive:.*\[([a-z]):")
+
+
+def _letters(group: str) -> list[str]:
+    """"C:, D:" -> ["C", "D"]"""
+    return [p.strip().rstrip(":").upper() for p in group.split(",") if p.strip()]
 
 
 def collect_drives(readings: list, only: list | None = None) -> list:
@@ -415,10 +438,11 @@ def collect_drives(readings: list, only: list | None = None) -> list:
         if not m:
             continue
         label = _norm(r.label)
+        first = _letters(m.group(2))[0]
         if "резерв" in label or "spare" in label:
-            nvme.add(m.group(2).upper())
+            nvme.add(first)
         elif "срок службы" in label or "remaining life" in label:
-            ssd.add(m.group(2).upper())
+            ssd.add(first)
 
     for r in readings:
         if r.kind != "temp" or _norm(r.label) not in _DRIVE_TEMP_LABELS:
@@ -426,22 +450,26 @@ def collect_drives(readings: list, only: list | None = None) -> list:
         m = _RE_SMART.search(r.sensor)
         if not m:
             continue
-        model, letter = m.group(1), m.group(2).upper()
-        if letter in seen or (want is not None and letter not in want):
+        model, letters = m.group(1), _letters(m.group(2))
+        letter = letters[0]                       # по первой букве диск и узнаём дальше
+        if letter in seen or (want is not None and not want.intersection(letters)):
             continue
         seen.add(letter)
 
-        used_pct = used_gb = total_gb = None
-        try:
-            u = shutil.disk_usage(f"{letter}:\\")
-            used_pct = round(u.used / u.total * 100, 1)
-            used_gb = round(u.used / 1024**3, 1)
-            total_gb = round(u.total / 1024**3, 1)
-        except (OSError, ZeroDivisionError):
-            pass
+        # занятое место — по всем разделам физического диска вместе
+        used = total = 0
+        for part in letters:
+            try:
+                u = shutil.disk_usage(f"{part}:\\")
+                used, total = used + u.used, total + u.total
+            except OSError:
+                pass
+        used_pct = round(used / total * 100, 1) if total else None
+        used_gb = round(used / 1024**3, 1) if total else None
+        total_gb = round(total / 1024**3, 1) if total else None
 
         out.append({
-            "letter": f"{letter}:",
+            "letter": " ".join(f"{p}:" for p in letters),
             "name": model,
             "kind": "NVMe" if letter in nvme else "SSD" if letter in ssd else "HDD",
             "temp": float(r.value),

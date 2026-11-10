@@ -17,6 +17,7 @@ import time
 import sys
 from collections import deque
 
+from .gpuinfo import dedicated_vram_gb
 from .normalize import Metric, normalize, collect_cores, core_groups, collect_dimms, collect_drives, collect_network
 from .diagnose import hwinfo_hint
 from .parking import CoreParking
@@ -172,6 +173,14 @@ class SourceManager:
         self._retry_real_source()
         readings = self._read_active()
         metrics = normalize(readings, self.overrides)
+        vram_total = (self.config.get("vram_total_gb")
+                      or (metrics["vram_total"].value if "vram_total" in metrics else None)
+                      or (dedicated_vram_gb() if "vram_used" in metrics else None))
+        # Radeon: процента занятой VRAM в HWiNFO нет — считаем из занятой и полной
+        used = metrics.get("vram_used")
+        if "vram_load" not in metrics and used and vram_total and used.unit == "GB":
+            metrics["vram_load"] = Metric("vram_load", round(used.value / vram_total * 100, 1), "%",
+                                          used.raw_sensor, "занято / объём VRAM")
         cores = collect_cores(readings)
 
         # пополняем историю загрузки и отдаём её вместе с ядрами;
@@ -295,9 +304,8 @@ class SourceManager:
             "dimms": dimms,
             "drives": collect_drives(readings, self.config.get("drives")),
             "network": network,
-            # из конфига, иначе из датчиков (занятая + свободная видеопамять)
-            "vram_total_gb": self.config.get("vram_total_gb")
-                             or (metrics["vram_total"].value if "vram_total" in metrics else None),
+            # из конфига, из датчиков (занятая + свободная) или из реестра Windows
+            "vram_total_gb": vram_total,
             "metrics": {
                 k: {"value": m.value, "unit": m.unit, "sensor": m.raw_sensor, "label": m.raw_label}
                 for k, m in metrics.items()
