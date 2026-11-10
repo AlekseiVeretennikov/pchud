@@ -304,6 +304,7 @@ class SourceManager:
             },
             "cores": cores,
             "core_groups": groups,
+            "sensor_count": len(readings),   # для заставки при запуске
         }
 
     def list_raw(self) -> list:

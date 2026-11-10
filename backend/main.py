@@ -22,6 +22,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import __version__
 from .manager import SourceManager
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -51,7 +52,8 @@ DEFAULT_CONFIG = {
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
     "background": "cipher-rain",  # файл из web/backgrounds/ или "none"
-    "label_glitch": True,  # редкая замена букв в подписях
+    "label_glitch": True,  # редкая замена букв в подписях и помехи в названиях CPU/GPU
+    "boot_animation": True,  # заставка «инициализации» при запуске
 }
 
 
@@ -92,6 +94,8 @@ class Api:
             "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
             "background": self._config["background"],
             "label_glitch": self._config["label_glitch"],
+            "boot_animation": self._config["boot_animation"],
+            "version": __version__,
         }
 
 

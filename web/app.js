@@ -727,8 +727,11 @@ async function pollLoop(intervalMs) {
       if (window.pywebview && window.pywebview.api) {
         const snap = await window.pywebview.api.get_snapshot();
         render(snap);
+        window.HudBoot.feed(snap);   // заставке нужен первый снимок
       } else {
-        render(demoSnapshot());
+        const snap = demoSnapshot();
+        render(snap);
+        window.HudBoot.feed(snap);
       }
     } catch (e) {
       console.error("snapshot error", e);
@@ -868,15 +871,17 @@ function demoSnapshot() {
 /* ── оформление из config.json: фон ("none" = без фона) и эффект подписей ── */
 async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
-  let config = { background: "cipher-rain", label_glitch: true };
+  let config = { background: "cipher-rain", label_glitch: true, boot_animation: true, version: "" };
   if (window.pywebview) config = await window.pywebview.api.get_config();
   // "letter-glitch" — старый фон до 0.1.1; в чужих config.json он ещё встречается
   const name = config.background === "letter-glitch" ? "cipher-rain" : config.background;
   const background = (window.HudBackgrounds || {})[name];
   if (background) background.start(document.getElementById("hud-bg"));
+  if (config.boot_animation) window.HudBoot.start(config.version);
+  else window.HudBoot.skip();
   if (config.label_glitch) {
     window.HudLabelGlitch.start();
-    window.HudNameScan.start();
+    window.HudNameFx.startNoise();
   }
 }
 
