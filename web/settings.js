@@ -171,7 +171,10 @@
         btn.dataset.ready = "1";
         btn.addEventListener("click", (e) => { e.stopPropagation(); toggle(); });
       }
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+      document.addEventListener("keydown", (e) => {
+        // Esc при открытой панели только закрывает её — дальше (к выходу из полного экрана) не пускаем
+        if (e.key === "Escape" && !panel.hidden) { hide(); e.stopPropagation(); }
+      });
       document.addEventListener("click", (e) => {
         if (!panel.hidden && !panel.contains(e.target)) hide();
       });

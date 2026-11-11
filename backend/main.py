@@ -102,7 +102,12 @@ def save_config_keys(changes: dict) -> None:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))   # ValueError, если файл битый
         if not isinstance(data, dict):
             raise ValueError("config.json не является объектом JSON")
-    data.update(changes)
+    for key, value in changes.items():
+        # вложенные словари (window) дополняем, а не заменяем целиком
+        if isinstance(value, dict) and isinstance(data.get(key), dict):
+            data[key] = {**data[key], **value}
+        else:
+            data[key] = value
     tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, CONFIG_PATH)                                       # атомарно: файл не останется наполовину записанным
@@ -116,6 +121,32 @@ class Api:
         self._config = config
         # опрос и отчёт идут из разных потоков pywebview — не даём им читать датчики одновременно
         self._lock = threading.Lock()
+        self._window = None
+        self._fullscreen = bool(config.get("fullscreen"))
+
+    def set_window(self, window) -> None:
+        self._window = window
+
+    def toggle_fullscreen(self) -> dict:
+        """Кнопка «Весь экран» / F11. Режим запоминается, а вместе с ним — монитор,
+        на котором стояло окно: иначе при следующем запуске полный экран откроется
+        на основном мониторе, а не на портативном."""
+        if self._window is None:
+            return {"ok": False, "fullscreen": self._fullscreen}
+        changes = {}
+        if not self._fullscreen:
+            try:
+                changes["window"] = {"x": int(self._window.x), "y": int(self._window.y)}
+            except (TypeError, ValueError, AttributeError):
+                pass
+        self._window.toggle_fullscreen()
+        self._fullscreen = not self._fullscreen
+        changes["fullscreen"] = self._fullscreen
+        try:
+            save_config_keys(changes)
+        except (OSError, ValueError):
+            pass            # не сохранилось — переключение всё равно сработало
+        return {"ok": True, "fullscreen": self._fullscreen}
 
     def get_snapshot(self) -> dict:
         with self._lock:
@@ -137,6 +168,7 @@ class Api:
             "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
             "background": self._config["background"],
             **{key: self._config[key] for key in SETTINGS},
+            "fullscreen": self._fullscreen,
             "version": __version__,
         }
 
@@ -223,6 +255,7 @@ def main() -> None:
         background_color="#0a0e14",
         fullscreen=config["fullscreen"],
     )
+    api.set_window(window)
 
     webview.start()
 

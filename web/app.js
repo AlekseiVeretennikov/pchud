@@ -887,6 +887,34 @@ async function startEffects() {
   window.HudLabelGlitch.start();
   window.HudNameFx.startNoise();
   window.HudSettings.init(config);   // фон, его яркость и слои, выключатели эффектов
+  setupFullscreen(config.fullscreen);
+}
+
+/* ── весь экран: кнопка в подвале, F11; Esc — выйти. Режим и монитор запоминаются ── */
+let fullscreen = false;
+function showFullscreenState() {
+  const btn = document.getElementById("fullscreen-btn");
+  if (!btn) return;
+  btn.textContent = fullscreen ? "Окно" : "Весь экран";
+  btn.title = fullscreen ? "Вернуть окно (F11 или Esc)" : "На весь экран (F11)";
+}
+async function toggleFullscreen() {
+  if (!window.pywebview) return;
+  const res = await window.pywebview.api.toggle_fullscreen();
+  if (res && res.ok) { fullscreen = res.fullscreen; showFullscreenState(); }
+}
+function setupFullscreen(initial) {
+  fullscreen = !!initial;
+  showFullscreenState();
+  const btn = document.getElementById("fullscreen-btn");
+  if (!btn || btn.dataset.ready) return;
+  btn.dataset.ready = "1";
+  btn.addEventListener("click", toggleFullscreen);
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "F11") { e.preventDefault(); toggleFullscreen(); }
+    // Esc выходит из полного экрана; при открытой панели настроек её закрывает settings.js
+    else if (e.key === "Escape" && fullscreen && !document.querySelector(".boot")) toggleFullscreen();
+  });
 }
 
 /* ── кнопки HWiNFO / RTSS в подвале: запустить программу, если она не работает ── */
