@@ -49,13 +49,18 @@ html, body {
 }
 
 /* ── сетка ────────────────────────────────────────── */
+:root { --extra-h: clamp(0px, calc(100vh - 1009px), 240px); }
+
 .hud {
   position: relative;  /* поверх .hud-bg */
   width: 100vw; height: 100vh;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);  /* строго пополам, независимо от содержимого */
-  /* нижний ряд фиксированный, весь остаток высоты — карточкам CPU/GPU */
-  grid-template-rows: minmax(0, 1fr) 200px auto;
+  /* Раскладка рассчитана на 1009 px (развёрнутое окно над панелью задач): там нижний ряд
+     200 px, подвал 20 px, остаток — карточкам CPU/GPU. Если экран выше (весь экран 1080 …),
+     карточки CPU/GPU не меняются, а прибавка (--extra-h) уходит вниз:
+     65 % — нижнему ряду (накопители, сеть, FPS), 35 % — подвалу с кнопками. */
+  grid-template-rows: minmax(0, 1fr) calc(200px + var(--extra-h) * 0.65) calc(20px + var(--extra-h) * 0.35);
   grid-template-areas:
     "cpu  gpu"
     "mini mini"
@@ -753,10 +758,14 @@ body.boot-pending .hud { opacity: 0; }
 .hud__foot {
   grid-area: foot;
   display: flex; align-items: center; gap: 14px;
-  font-family: var(--mono); font-size: 13px; color: var(--ink-dim);
+  /* на экране выше 1009 px подвал выше — и всё в нём крупнее */
+  font-family: var(--mono); font-size: calc(13px + var(--extra-h) * 0.03); color: var(--ink-dim);
   padding: 0 6px;
 }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cyan); }
+.dot {
+  width: calc(9px + var(--extra-h) * 0.02); height: calc(9px + var(--extra-h) * 0.02);
+  border-radius: 50%; background: var(--cyan); flex: none;
+}
 .dot[data-state="warn"] { background: var(--amber); }
 .dot[data-state="err"]  { background: var(--red); }
 .dot[data-state="off"]  { background: var(--ink-dim); opacity: 0.55; }
@@ -764,10 +773,12 @@ body.boot-pending .hud { opacity: 0; }
 .foot-app {
   display: inline-flex; align-items: center; gap: 14px;
   font: inherit; color: inherit;
-  background: transparent; border: 0; padding: 2px 4px; border-radius: 6px;
+  background: transparent; border: 0; border-radius: 6px;
+  padding: calc(2px + var(--extra-h) * 0.07) calc(4px + var(--extra-h) * 0.06);
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.2s, background 0.2s;
 }
+.foot-app:hover { background: rgba(56, 225, 196, 0.06); }
 .foot-app:hover { color: var(--cyan); }
 .foot-app:disabled { cursor: progress; }
 .foot-app__note:empty { display: none; }
@@ -779,10 +790,11 @@ body.boot-pending .hud { opacity: 0; }
 /* кнопка «Отчёт»: тихая, пока на неё не навели */
 .report-btn {
   margin-left: 10px;
-  font: inherit; font-size: 12px; color: var(--ink-dim);
+  font: inherit; font-size: calc(12px + var(--extra-h) * 0.03); color: var(--ink-dim);
   background: transparent;
   border: 1px solid var(--line); border-radius: 6px;
-  padding: 2px 10px;
+  /* 2×10 px на 1009 px; на весь экран кнопки заметно крупнее — в них проще попасть */
+  padding: calc(2px + var(--extra-h) * 0.07) calc(10px + var(--extra-h) * 0.1);
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
@@ -790,7 +802,7 @@ body.boot-pending .hud { opacity: 0; }
 .report-btn:disabled { cursor: progress; opacity: 0.6; }
 .report-btn[data-state="ok"]  { color: var(--cyan);  border-color: var(--cyan); }
 .report-btn[data-state="err"] { color: var(--red);   border-color: var(--red); }
-.clock { margin-left: auto; font-size: 16px; color: var(--ink); }
+.clock { margin-left: auto; font-size: calc(16px + var(--extra-h) * 0.05); color: var(--ink); }
 
 /* ── всплывающее предупреждение ───────────────────────── */
 .toast {
