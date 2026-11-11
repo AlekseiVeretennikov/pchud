@@ -276,7 +276,9 @@ body.boot-pending .hud { opacity: 0; }
   padding: 6px 0; transition: opacity 0.2s;
 }
 .settings__row--off { opacity: 0.35; pointer-events: none; }
-.settings__label { flex: 1 1 auto; min-width: 0; }
+.settings__label { flex: 1 1 0; min-width: 0; }
+/* переключатель и ползунок всегда справа от подписи: длинная подпись переносится сама, а не сталкивает их вниз */
+.settings__row--toggle, .settings__row--range { flex-wrap: nowrap; }
 .settings__hint { display: block; font-size: 11px; color: var(--ink-dim); margin-top: 1px; }
 .settings__hint--below { flex-basis: 100%; margin-top: -2px; }
 
