@@ -47,7 +47,9 @@ DEFAULT_CONFIG = {
     "libre_url": "http://localhost:8085/data.json",
     "poll_interval_ms": 1000,
     "fullscreen": False,
-    "window": {"width": 1920, "height": 1080, "x": None, "y": None, "frameless": False},
+    # maximized: открывать развёрнутым — окно само учитывает панель задач Windows.
+    # x/y HUD запоминает сам при закрытии: так он открывается на том же мониторе.
+    "window": {"width": 1920, "height": 1080, "x": None, "y": None, "frameless": False, "maximized": True},
     "metric_overrides": {},
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
@@ -60,6 +62,7 @@ DEFAULT_CONFIG = {
     "label_glitch": True,  # «шифрование» букв в подписях
     "name_noise": True,    # помехи в названиях CPU/GPU
     "boot_mode": "hacker", # заставка: "hacker" (взлом), "short" (короткая) или "off"
+    "start_fullscreen": False,  # «Всегда открывать на весь экран»
 }
 
 # что панель «Настройки» может менять, и как проверять значение
@@ -72,6 +75,7 @@ SETTINGS = {
     "label_glitch": lambda v: isinstance(v, bool),
     "name_noise": lambda v: isinstance(v, bool),
     "boot_mode": lambda v: v in ("hacker", "short", "off"),
+    "start_fullscreen": lambda v: isinstance(v, bool),
 }
 
 
@@ -86,6 +90,9 @@ def load_config() -> dict:
             # до 0.1.5 заставка включалась флагом boot_animation
             if user.get("boot_animation") is False and "boot_mode" not in user:
                 cfg["boot_mode"] = "off"
+            # «fullscreen» в config.json раньше означал то же, что теперь start_fullscreen
+            if user.get("fullscreen") is True and "start_fullscreen" not in user:
+                cfg["start_fullscreen"] = True
             # до 0.1.5 label_glitch выключал и помехи в названиях
             if user.get("label_glitch") is False and "name_noise" not in user:
                 cfg["name_noise"] = False
@@ -122,31 +129,33 @@ class Api:
         # опрос и отчёт идут из разных потоков pywebview — не даём им читать датчики одновременно
         self._lock = threading.Lock()
         self._window = None
-        self._fullscreen = bool(config.get("fullscreen"))
+        self._fullscreen = bool(config.get("fullscreen") or config.get("start_fullscreen"))
+        self._last_pos = None
 
     def set_window(self, window) -> None:
         self._window = window
 
     def toggle_fullscreen(self) -> dict:
-        """Кнопка «Весь экран» / F11. Режим запоминается, а вместе с ним — монитор,
-        на котором стояло окно: иначе при следующем запуске полный экран откроется
-        на основном мониторе, а не на портативном."""
+        """Кнопка «Весь экран» / F11 — только до закрытия HUD. Открываться сразу на весь
+        экран — отдельная настройка start_fullscreen в панели «Настройки»."""
         if self._window is None:
             return {"ok": False, "fullscreen": self._fullscreen}
-        changes = {}
-        if not self._fullscreen:
-            try:
-                changes["window"] = {"x": int(self._window.x), "y": int(self._window.y)}
-            except (TypeError, ValueError, AttributeError):
-                pass
         self._window.toggle_fullscreen()
         self._fullscreen = not self._fullscreen
-        changes["fullscreen"] = self._fullscreen
-        try:
-            save_config_keys(changes)
-        except (OSError, ValueError):
-            pass            # не сохранилось — переключение всё равно сработало
         return {"ok": True, "fullscreen": self._fullscreen}
+
+    # ── монитор, на котором HUD закрыли: там же он и откроется ──
+    def window_moved(self, x: int, y: int) -> None:
+        if x > -10000 and y > -10000:          # свёрнутое окно Windows уводит на -32000
+            self._last_pos = (int(x), int(y))
+
+    def window_closing(self) -> None:
+        if self._last_pos is None:
+            return
+        try:
+            save_config_keys({"window": {"x": self._last_pos[0], "y": self._last_pos[1]}})
+        except (OSError, ValueError):
+            pass
 
     def get_snapshot(self) -> dict:
         with self._lock:
@@ -253,9 +262,13 @@ def main() -> None:
         frameless=win_cfg.get("frameless", False),
         easy_drag=win_cfg.get("frameless", False),
         background_color="#0a0e14",
-        fullscreen=config["fullscreen"],
+        fullscreen=api._fullscreen,
+        # не на весь экран — развёрнутым: так низ окна не уходит под панель задач
+        maximized=not api._fullscreen and win_cfg.get("maximized", True),
     )
     api.set_window(window)
+    window.events.moved += api.window_moved
+    window.events.closing += api.window_closing
 
     webview.start()
 

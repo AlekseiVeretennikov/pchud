@@ -878,7 +878,7 @@ async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
   let config = {
     background: "cipher-rain", bg_brightness: 100, bg_field: true, bg_drops: true, bg_words: true,
-    label_glitch: true, name_noise: true, boot_mode: "hacker", version: "",
+    label_glitch: true, name_noise: true, boot_mode: "hacker", start_fullscreen: false, version: "",
   };
   if (window.pywebview) Object.assign(config, await window.pywebview.api.get_config());
   if (config.boot_mode === "off") window.HudBoot.skip();
@@ -890,7 +890,8 @@ async function startEffects() {
   setupFullscreen(config.fullscreen);
 }
 
-/* ── весь экран: кнопка в подвале, F11; Esc — выйти. Режим и монитор запоминаются ── */
+/* ── весь экран: кнопка в подвале, F11; Esc — выйти. Действует до закрытия HUD;
+   открываться сразу на весь экран — настройка «Всегда открывать на весь экран» ── */
 let fullscreen = false;
 function showFullscreenState() {
   const btn = document.getElementById("fullscreen-btn");
