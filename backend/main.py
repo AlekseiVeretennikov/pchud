@@ -52,8 +52,26 @@ DEFAULT_CONFIG = {
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
     "background": "cipher-rain",  # файл из web/backgrounds/ или "none"
-    "label_glitch": True,  # редкая замена букв в подписях и помехи в названиях CPU/GPU
-    "boot_animation": True,  # заставка «инициализации» при запуске
+    # всё ниже меняется и в панели «Настройки» внизу HUD
+    "bg_brightness": 100,  # яркость фона, 10–100 %
+    "bg_field": True,      # поле тусклых символов
+    "bg_drops": True,      # стекающие капли
+    "bg_words": True,      # проступающие слова
+    "label_glitch": True,  # «шифрование» букв в подписях
+    "name_noise": True,    # помехи в названиях CPU/GPU
+    "boot_mode": "hacker", # заставка: "hacker" (взлом), "short" (короткая) или "off"
+}
+
+# что панель «Настройки» может менять, и как проверять значение
+SETTINGS = {
+    "background": lambda v: v in ("cipher-rain", "none"),
+    "bg_brightness": lambda v: isinstance(v, int) and not isinstance(v, bool) and 10 <= v <= 100,
+    "bg_field": lambda v: isinstance(v, bool),
+    "bg_drops": lambda v: isinstance(v, bool),
+    "bg_words": lambda v: isinstance(v, bool),
+    "label_glitch": lambda v: isinstance(v, bool),
+    "name_noise": lambda v: isinstance(v, bool),
+    "boot_mode": lambda v: v in ("hacker", "short", "off"),
 }
 
 
@@ -65,9 +83,29 @@ def load_config() -> dict:
             cfg.update({k: v for k, v in user.items() if k != "window"})
             if "window" in user:
                 cfg["window"].update(user["window"])
+            # до 0.1.5 заставка включалась флагом boot_animation
+            if user.get("boot_animation") is False and "boot_mode" not in user:
+                cfg["boot_mode"] = "off"
+            # до 0.1.5 label_glitch выключал и помехи в названиях
+            if user.get("label_glitch") is False and "name_noise" not in user:
+                cfg["name_noise"] = False
         except (ValueError, OSError) as e:
             print(f"[config] не удалось прочитать config.json: {e}", file=sys.stderr)
     return cfg
+
+
+def save_config_keys(changes: dict) -> None:
+    """Дописывает ключи в config.json, сохраняя всё остальное (например, metric_overrides).
+    Повреждённый config.json не перезаписываем — лучше сообщить, чем стереть чужие настройки."""
+    data = {}
+    if CONFIG_PATH.exists():
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))   # ValueError, если файл битый
+        if not isinstance(data, dict):
+            raise ValueError("config.json не является объектом JSON")
+    data.update(changes)
+    tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, CONFIG_PATH)                                       # атомарно: файл не останется наполовину записанным
 
 
 class Api:
@@ -98,10 +136,21 @@ class Api:
         return {
             "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
             "background": self._config["background"],
-            "label_glitch": self._config["label_glitch"],
-            "boot_animation": self._config["boot_animation"],
+            **{key: self._config[key] for key in SETTINGS},
             "version": __version__,
         }
+
+    def save_settings(self, changes: dict) -> dict:
+        """Панель «Настройки»: применить и дописать в config.json, не трогая остальные ключи."""
+        bad = [k for k, v in (changes or {}).items() if k not in SETTINGS or not SETTINGS[k](v)]
+        if bad:
+            return {"ok": False, "error": f"недопустимые настройки: {', '.join(bad)}"}
+        try:
+            save_config_keys(changes)
+        except (OSError, ValueError) as e:
+            return {"ok": False, "error": str(e)}
+        self._config.update(changes)
+        return {"ok": True}
 
 
 def run_list_mode(manager: SourceManager) -> None:

@@ -876,18 +876,17 @@ function demoSnapshot() {
 /* ── оформление из config.json: фон ("none" = без фона) и эффект подписей ── */
 async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
-  let config = { background: "cipher-rain", label_glitch: true, boot_animation: true, version: "" };
-  if (window.pywebview) config = await window.pywebview.api.get_config();
-  // "letter-glitch" — старый фон до 0.1.1; в чужих config.json он ещё встречается
-  const name = config.background === "letter-glitch" ? "cipher-rain" : config.background;
-  const background = (window.HudBackgrounds || {})[name];
-  if (background) background.start(document.getElementById("hud-bg"));
-  if (config.boot_animation) window.HudBoot.start(config.version);
-  else window.HudBoot.skip();
-  if (config.label_glitch) {
-    window.HudLabelGlitch.start();
-    window.HudNameFx.startNoise();
-  }
+  let config = {
+    background: "cipher-rain", bg_brightness: 100, bg_field: true, bg_drops: true, bg_words: true,
+    label_glitch: true, name_noise: true, boot_mode: "hacker", version: "",
+  };
+  if (window.pywebview) Object.assign(config, await window.pywebview.api.get_config());
+  if (config.boot_mode === "off") window.HudBoot.skip();
+  else window.HudBoot.start(config.version, config.boot_mode);
+  // эффекты запускаются всегда, а включены ли — решает панель настроек
+  window.HudLabelGlitch.start();
+  window.HudNameFx.startNoise();
+  window.HudSettings.init(config);   // фон, его яркость и слои, выключатели эффектов
 }
 
 /* ── кнопки HWiNFO / RTSS в подвале: запустить программу, если она не работает ── */

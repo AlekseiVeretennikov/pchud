@@ -76,7 +76,11 @@
     return { canvas, size };
   }
 
-  function create(container) {
+  // настройки из панели «Настройки»: яркость 0..1 и отдельные слои
+  const DEFAULT_OPTIONS = { brightness: 1, field: true, drops: true, words: true };
+
+  function create(container, options) {
+    const opt = Object.assign({}, DEFAULT_OPTIONS, options);
     const canvas = document.createElement("canvas");
     container.appendChild(canvas);
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -101,6 +105,9 @@
       const g = randInt(NOISE);
       return g < GLYPHS.indexOf("G") ? g : g + 20;
     }
+    // поле можно выключить: тогда видны только капли и слова на чёрном
+    const fieldAlpha = (i) => (opt.field ? base[i] : 0);
+
     function lift(i, v) {
       if (boost[i] === 0) lit.push(i);
       if (v > boost[i]) boost[i] = v;
@@ -112,7 +119,7 @@
       g.globalAlpha = 1;
       g.fillStyle = BG;
       g.fillRect(x, y, s, s);
-      g.globalAlpha = alpha;
+      g.globalAlpha = alpha * opt.brightness;
       g.drawImage(atlas.canvas, glyph[i] * s, color * s, s, s, x, y, s, s);
     }
 
@@ -132,18 +139,22 @@
       paint = new Uint8Array(n).fill(NO_PAINT);
       dirty = []; lit = []; words = [];
       atlas = buildAtlas(dpr);
-      fctx.globalAlpha = 1;
-      fctx.fillStyle = BG;
-      fctx.fillRect(0, 0, field.width, field.height);
       for (let i = 0; i < n; i++) {
         glyph[i] = noiseGlyph();
         base[i] = rand(BASE_MIN, BASE_MAX);
         tint[i] = Math.random() < 0.012 ? AMBER : Math.random() < 0.25 ? CYAN : DIM;
-        blit(fctx, i, tint[i], base[i]);
       }
+      repaintField();
       drops = [];
       const count = Math.max(4, Math.round(cols / 4));
       for (let i = 0; i < count; i++) drops.push(newDrop(true));
+    }
+
+    function repaintField() {
+      fctx.globalAlpha = 1;
+      fctx.fillStyle = BG;
+      fctx.fillRect(0, 0, field.width, field.height);
+      for (let i = 0; i < cols * rows; i++) blit(fctx, i, tint[i], fieldAlpha(i));
     }
 
     function newDrop(anywhere) {
@@ -160,7 +171,7 @@
       lit = [];
 
       // капли
-      for (const d of drops) {
+      for (const d of opt.drops ? drops : []) {
         d.y += d.speed * dt;
         if (d.y - d.len > rows) Object.assign(d, newDrop(false));
         const head = Math.floor(d.y);
@@ -175,7 +186,7 @@
       }
 
       // расшифровка слов: шум → буквы проступают слева направо → слово светится → рассыпается
-      if (now > nextWord && words.length < MAX_WORDS) {
+      if (opt.words && now > nextWord && words.length < MAX_WORDS) {
         const error = Math.random() < ERROR_SHARE;
         const list = error ? ERRORS : WORDS;
         const text = list[randInt(list.length)];
@@ -226,7 +237,7 @@
         setGlyph(i);
       }
 
-      for (const i of dirty) blit(fctx, i, tint[i], base[i]);
+      for (const i of dirty) blit(fctx, i, tint[i], fieldAlpha(i));
       dirty = [];
     }
 
@@ -238,7 +249,7 @@
         const color = b > 0.95 ? HEAD
           : paint[i] !== NO_PAINT ? paint[i]
           : b > 0.2 ? CYAN : tint[i];
-        blit(ctx, i, color, Math.min(1, base[i] + b));
+        blit(ctx, i, color, Math.min(1, fieldAlpha(i) + b));
       }
     }
 
@@ -257,6 +268,11 @@
     raf = requestAnimationFrame(frame);
 
     return {
+      setOptions(o) {
+        Object.assign(opt, o);
+        if (!opt.words) words = [];
+        repaintField();
+      },
       stop() {
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", resize);
@@ -266,12 +282,17 @@
   }
 
   let instance = null;
+  const pending = {};                // настройки, пришедшие до запуска фона
   window.HudBackgrounds = window.HudBackgrounds || {};
   window.HudBackgrounds["cipher-rain"] = {
-    start(container) {
+    start(container, options) {
       if (instance || !container) return instance;
-      instance = create(container);
+      instance = create(container, Object.assign(pending, options));
       return instance;
+    },
+    setOptions(o) {
+      Object.assign(pending, o);
+      if (instance) instance.setOptions(o);
     },
     stop() {
       if (instance) instance.stop();

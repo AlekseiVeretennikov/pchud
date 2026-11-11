@@ -33,9 +33,10 @@
   }
 
   let turn = 0;
+  let noiseEnabled = true;
   function noiseTick() {
     const names = visible();
-    if (names.length) noise(names[turn++ % names.length]);
+    if (noiseEnabled && names.length) noise(names[turn++ % names.length]);
     setTimeout(noiseTick, NOISE_MIN_MS + Math.random() * (NOISE_MAX_MS - NOISE_MIN_MS));
   }
 
@@ -87,6 +88,7 @@
       started = true;
       setTimeout(noiseTick, firstDelay);
     },
+    setNoiseEnabled(v) { noiseEnabled = !!v; },
     typeInAll: () => Promise.all(visible().map(typeIn)),
     noise,
     typeIn,

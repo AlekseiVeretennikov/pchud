@@ -3,7 +3,13 @@
   "libre_url": "http://localhost:8085/data.json",
   "poll_interval_ms": 1000,
   "background": "cipher-rain",
+  "bg_brightness": 100,
+  "bg_field": true,
+  "bg_drops": true,
+  "bg_words": true,
   "label_glitch": true,
+  "name_noise": true,
+  "boot_mode": "hacker",
   "fullscreen": false,
   "window": {
     "width": 1920,

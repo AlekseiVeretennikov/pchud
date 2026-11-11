@@ -74,10 +74,13 @@
     );
   }
 
+  let enabled = true;
+  let started = false;
   function start() {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (started || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    started = true;
     const schedule = () => setTimeout(() => {
-      if (!document.hidden) {
+      if (enabled && !document.hidden) {
         const all = labels();
         const count = LABELS_MIN + randomInt(LABELS_MAX - LABELS_MIN + 1);
         for (let i = 0; i < count && all.length; i++) {
@@ -89,5 +92,7 @@
     schedule();
   }
 
-  window.HudLabelGlitch = { start, glitch, labels };
+  // из панели настроек: выключить/включить без перезапуска
+  const setEnabled = (v) => { enabled = !!v; };
+  window.HudLabelGlitch = { start, setEnabled, glitch, labels };
 })();
