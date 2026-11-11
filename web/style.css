@@ -547,17 +547,6 @@ body.boot-pending .hud { opacity: 0; }
   display: block;
 }
 
-/* ── лишняя высота экрана → графикам, а не пустоте ─────────
-   Раскладка рассчитана на 1009 px (развёрнутое окно над панелью задач).
-   Всё, что сверх этого (окно 1041, весь экран 1080 …), делится так:
-   40 % — графикам нижних плиток (MB слева и термики GPU справа поровну,
-   поэтому их ряды остаются на одном уровне), по 30 % — каждому ряду ядер.
-   Две строки ядер + нижний ряд = ровно 100 %: под CCD2 не остаётся пустоты.
-   Карточка GPU получает ту же прибавку — её забирают плитки DIMM. */
-:root { --extra-h: clamp(0px, calc(100vh - 1009px), 240px); }
-.card__cores > .ccd-group:last-child .mb-tile__spark,
-.gpu-mem > .ccd-group:last-child .mb-tile__spark { height: calc(30px + var(--extra-h) * 0.4); }
-
 /* ── секция ядер CPU (внутри .card--cpu) ─────────────── */
 .card__cores {
   border-top: 1px solid var(--line);
@@ -686,7 +675,7 @@ body.boot-pending .hud { opacity: 0; }
 /* спарклайн истории загрузки (canvas, окно 60 с) — вся ширина плитки */
 .core-chip__spark {
   width: 100%;
-  height: calc(30px + var(--extra-h) * 0.3);   /* 30px на 1009 px, выше — растёт (см. --extra-h) */
+  height: 30px;
   flex: none;
   display: block;
 }
