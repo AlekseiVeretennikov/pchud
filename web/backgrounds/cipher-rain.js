@@ -39,10 +39,13 @@
   const CELL = 18;          // шаг сетки, CSS-пиксели
   const FONT_PX = 15;
   const FPS = 30;
-  const BG = "#060810";
-  // цвета: тусклый, основной циан, янтарная искра, почти белая голова капли
-  // + красный для слов-ошибок
-  const COLORS = ["#2a9484", "#38e1c4", "#f5b942", "#e4fff9", "#ff5470"];
+  // палитра по умолчанию; тема передаёт свою через options.palette
+  // colors: тусклый, основной, янтарная искра, голова капли, красный для слов-ошибок
+  const DEFAULT_PALETTE = {
+    bg: "#060810",
+    colors: ["#2a9484", "#38e1c4", "#f5b942", "#e4fff9", "#ff5470"],
+    glow: true,      // свечение ярких символов; на светлом фоне выглядит грязно
+  };
   const DIM = 0, CYAN = 1, AMBER = 2, HEAD = 3, RED = 4;
   const BASE_MIN = 0.12, BASE_MAX = 0.3;
   // тайминги расшифровки слова, мс
@@ -51,7 +54,8 @@
   const rand = (a, b) => a + Math.random() * (b - a);
   const randInt = (n) => (Math.random() * n) | 0;
 
-  function buildAtlas(dpr) {
+  function buildAtlas(dpr, palette) {
+    const COLORS = palette.colors;
     const size = Math.ceil(CELL * dpr);
     const canvas = document.createElement("canvas");
     canvas.width = size * GLYPHS.length;
@@ -63,7 +67,7 @@
     COLORS.forEach((color, row) => {
       g.fillStyle = color;
       g.shadowColor = color;
-      g.shadowBlur = row === DIM ? 0 : 5 * dpr;   // свечение только у ярких
+      g.shadowBlur = row === DIM || !palette.glow ? 0 : 5 * dpr;   // свечение только у ярких
       for (let i = 0; i < GLYPHS.length; i++) {
         g.save();
         g.beginPath();
@@ -77,7 +81,7 @@
   }
 
   // настройки из панели «Настройки»: яркость 0..1 и отдельные слои
-  const DEFAULT_OPTIONS = { brightness: 1, field: true, drops: true, words: true };
+  const DEFAULT_OPTIONS = { brightness: 1, field: true, drops: true, words: true, palette: DEFAULT_PALETTE };
 
   function create(container, options) {
     const opt = Object.assign({}, DEFAULT_OPTIONS, options);
@@ -117,7 +121,7 @@
       const s = atlas.size, cell = CELL * dpr;
       const x = (i % cols) * cell, y = ((i / cols) | 0) * cell;
       g.globalAlpha = 1;
-      g.fillStyle = BG;
+      g.fillStyle = opt.palette.bg;
       g.fillRect(x, y, s, s);
       g.globalAlpha = alpha * opt.brightness;
       g.drawImage(atlas.canvas, glyph[i] * s, color * s, s, s, x, y, s, s);
@@ -138,7 +142,7 @@
       boost = new Float32Array(n);
       paint = new Uint8Array(n).fill(NO_PAINT);
       dirty = []; lit = []; words = [];
-      atlas = buildAtlas(dpr);
+      atlas = buildAtlas(dpr, opt.palette);
       for (let i = 0; i < n; i++) {
         glyph[i] = noiseGlyph();
         base[i] = rand(BASE_MIN, BASE_MAX);
@@ -152,7 +156,7 @@
 
     function repaintField() {
       fctx.globalAlpha = 1;
-      fctx.fillStyle = BG;
+      fctx.fillStyle = opt.palette.bg;
       fctx.fillRect(0, 0, field.width, field.height);
       for (let i = 0; i < cols * rows; i++) blit(fctx, i, tint[i], fieldAlpha(i));
     }
@@ -269,7 +273,9 @@
 
     return {
       setOptions(o) {
+        const repaint = o.palette && o.palette !== opt.palette;
         Object.assign(opt, o);
+        if (repaint) atlas = buildAtlas(dpr, opt.palette);
         if (!opt.words) words = [];
         repaintField();
       },

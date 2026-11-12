@@ -13,8 +13,40 @@
   --amber:   #f5b942;
   --red:     #ff5470;
   --track:   #182028;
+  /* те же цвета числами — для rgba(var(--…-rgb), прозрачность) */
+  --bg-rgb:     6, 8, 16;
+  --panel-rgb:  12, 16, 24;
+  --panel2-rgb: 9, 13, 20;
+  --ink-rgb:    232, 238, 245;
+  --dim-rgb:    124, 138, 156;
+  --accent-rgb: 56, 225, 196;
   --mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
   --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+/* ── палитры темы «Матрица» (настройка «Цвет»): html[data-palette] ── */
+/* зелёная — как в фильме «Матрица», но на каждый день: цифры почти белые с лёгкой
+   зеленцой, а зелёные — шкалы, графики и дождь (как устроен «Циан») */
+html[data-palette="green"] {
+  --bg: #010401; --panel: #040a05; --panel-2: #030803; --line: #11251a;
+  --ink: #e4f2e6; --ink-dim: #7f9484; --cyan: #22b345; --track: #0c1c10;
+  --bg-rgb: 1, 4, 1; --panel-rgb: 4, 10, 5; --panel2-rgb: 3, 8, 3;
+  --ink-rgb: 228, 242, 230; --dim-rgb: 127, 148, 132; --accent-rgb: 34, 179, 69;
+}
+/* тёмная — чёрно-белая: чисто чёрный фон (на обычных мониторах почти чёрный уже серит), буквы и графики белые */
+html[data-palette="dark"] {
+  --bg: #000000; --panel: #060606; --panel-2: #030303; --line: #222222;
+  --ink: #ffffff; --ink-dim: #a6a6a6; --cyan: #ffffff; --track: #1c1c1c;
+  --bg-rgb: 0, 0, 0; --panel-rgb: 6, 6, 6; --panel2-rgb: 3, 3, 3;
+  --ink-rgb: 255, 255, 255; --dim-rgb: 166, 166, 166; --accent-rgb: 255, 255, 255;
+}
+/* белая — наоборот: светлый фон, буквы и графики чёрные */
+html[data-palette="light"] {
+  --bg: #ececec; --panel: #f8f8f8; --panel-2: #f2f2f2; --line: #cfcfcf;
+  --ink: #111111; --ink-dim: #666666; --cyan: #1a1a1a; --amber: #b86e00; --red: #cc2747;
+  --track: #d9d9d9; --toast-bg: #fff4e0;
+  --bg-rgb: 236, 236, 236; --panel-rgb: 248, 248, 248; --panel2-rgb: 242, 242, 242;
+  --ink-rgb: 17, 17, 17; --dim-rgb: 102, 102, 102; --accent-rgb: 26, 26, 26;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -51,6 +83,11 @@ html, body {
 /* ── сетка ────────────────────────────────────────── */
 :root { --extra-h: clamp(0px, calc(100vh - 1009px), 240px); }
 
+/* «Яркость интерфейса» (тема «Матрица»): приглушает цифры, шкалы и графики, фон — нет.
+   Фильтр подбирает тема: на тёмных палитрах — темнее, на светлой — бледнее.
+   На 100 % фильтра нет совсем, чтобы не тратить на него видеокарту */
+html[data-dim] .hud { filter: var(--hud-filter, none); }
+
 .hud {
   position: relative;  /* поверх .hud-bg */
   width: 100vw; height: 100vh;
@@ -72,7 +109,7 @@ html, body {
 /* ── карточки ─────────────────────────────────────── */
 .card {
   /* --panel и --panel-2 с прозрачностью: фон слегка просвечивает, цифры остаются читаемыми */
-  background: linear-gradient(160deg, rgba(12, 16, 24, 0.6) 0%, rgba(9, 13, 20, 0.6) 100%);
+  background: linear-gradient(160deg, rgba(var(--panel-rgb), 0.6) 0%, rgba(var(--panel2-rgb), 0.6) 100%);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 18px 20px;
@@ -180,7 +217,7 @@ body.boot-pending .hud { opacity: 0; }
 .boot {
   position: fixed; inset: 0; z-index: 50;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: rgba(6, 8, 16, 0.55);
+  background: rgba(var(--bg-rgb), 0.55);
   font-family: var(--mono); font-size: 17px; line-height: 1.7;
   color: var(--ink-dim);
   cursor: pointer;
@@ -190,7 +227,7 @@ body.boot-pending .hud { opacity: 0; }
 .boot__log { min-width: 640px; white-space: pre; }
 .boot__title {
   color: var(--cyan); font-size: 22px; font-weight: 700; letter-spacing: 0.25em;
-  margin-bottom: 10px; text-shadow: 0 0 12px rgba(56, 225, 196, 0.5);
+  margin-bottom: 10px; text-shadow: 0 0 12px rgba(var(--accent-rgb), 0.5);
 }
 .boot__value { color: var(--ink); }
 .boot__status--ok   { color: var(--cyan); }
@@ -200,7 +237,7 @@ body.boot-pending .hud { opacity: 0; }
 .boot__granted {
   margin-top: 14px;
   color: var(--cyan); font-size: 24px; font-weight: 700; letter-spacing: 0.4em;
-  text-shadow: 0 0 16px rgba(56, 225, 196, 0.6);
+  text-shadow: 0 0 16px rgba(var(--accent-rgb), 0.6);
   animation: boot-granted 0.6s steps(2) 1;
 }
 @keyframes boot-granted { 0% { opacity: 0; } 30% { opacity: 1; } 45% { opacity: 0.2; } 60%, 100% { opacity: 1; } }
@@ -226,7 +263,7 @@ body.boot-pending .hud { opacity: 0; }
 .boot__key-done { color: var(--cyan); opacity: 1; }
 .boot--flash::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: rgba(56, 225, 196, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
   animation: boot-flash 0.5s ease-out forwards;
 }
 @keyframes boot-flash { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
@@ -249,9 +286,9 @@ body.boot-pending .hud { opacity: 0; }
   position: fixed; right: 18px; bottom: 44px; z-index: 40;
   width: 380px; max-height: calc(100vh - 70px); overflow-y: auto;
   padding: 16px 18px 12px;
-  background: rgba(9, 13, 20, 0.96);
+  background: rgba(var(--panel2-rgb), 0.96);
   border: 1px solid var(--line); border-radius: 14px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(56, 225, 196, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(var(--accent-rgb), 0.08);
   font-size: 13px; color: var(--ink);
 }
 .settings[hidden] { display: none; }
@@ -294,7 +331,7 @@ body.boot-pending .hud { opacity: 0; }
   width: 14px; height: 14px; border-radius: 50%;
   background: var(--ink-dim); transition: transform 0.2s, background 0.2s;
 }
-.settings__switch[aria-pressed="true"] { background: rgba(56, 225, 196, 0.22); border-color: var(--cyan); }
+.settings__switch[aria-pressed="true"] { background: rgba(var(--accent-rgb), 0.22); border-color: var(--cyan); }
 .settings__switch[aria-pressed="true"]::after { transform: translateX(18px); background: var(--cyan); }
 
 /* ползунок */
@@ -309,7 +346,16 @@ body.boot-pending .hud { opacity: 0; }
   background: transparent; color: var(--ink-dim); border: 0; cursor: pointer;
 }
 .settings__choice button + button { border-left: 1px solid var(--line); }
-.settings__choice button[aria-pressed="true"] { background: rgba(56, 225, 196, 0.16); color: var(--cyan); }
+/* длинные подписи (мониторы) — столбиком */
+.settings__choice--vertical { flex-direction: column; }
+.settings__choice--vertical button { padding: 6px 10px; text-align: left; }
+.settings__choice--vertical button + button { border-left: 0; border-top: 1px solid var(--line); }
+.settings__swatch {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 0;
+  box-shadow: 0 0 0 1px rgba(var(--ink-rgb), 0.35);
+}
+.settings__choice button[aria-pressed="true"] { background: rgba(var(--accent-rgb), 0.16); color: var(--cyan); }
 
 .settings__status {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line);
@@ -529,7 +575,7 @@ body.boot-pending .hud { opacity: 0; }
   vertical-align: 1px;
   color: var(--ink-dim);
 }
-.drive__kind--nvme, .drive__kind--ssd { color: var(--cyan); border-color: rgba(56, 225, 196, 0.35); }
+.drive__kind--nvme, .drive__kind--ssd { color: var(--cyan); border-color: rgba(var(--accent-rgb), 0.35); }
 .drive__rate { font-size: 11px; color: var(--ink-dim); white-space: nowrap; text-align: right; }
 .drive__act { font-size: 12px; text-align: right; }
 .drive__temp { font-weight: 700; text-align: right; }
@@ -579,9 +625,9 @@ body.boot-pending .hud { opacity: 0; }
   font-size: 11px;
 }
 .ccd-label__tag {
-  background: rgba(56, 225, 196, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
   color: var(--cyan);
-  border: 1px solid rgba(56, 225, 196, 0.35);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
   border-radius: 4px;
   padding: 1px 6px;
   font-weight: 700;
@@ -590,7 +636,7 @@ body.boot-pending .hud { opacity: 0; }
   white-space: nowrap;
 }
 .ccd-label__tag--dim {
-  background: rgba(255,255,255, 0.05);
+  background: rgba(var(--ink-rgb), 0.05);
   color: var(--ink-dim);
   border-color: var(--line);
 }
@@ -639,9 +685,9 @@ body.boot-pending .hud { opacity: 0; }
 }
 .core-chip__badge {
   font-size: 8px;
-  background: rgba(56, 225, 196, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--cyan);
-  border: 1px solid rgba(56, 225, 196, 0.28);
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
   border-radius: 3px;
   padding: 0 3px;
   font-weight: 700;
@@ -780,7 +826,7 @@ body.boot-pending .hud { opacity: 0; }
   cursor: pointer;
   transition: color 0.2s, background 0.2s;
 }
-.foot-app:hover { background: rgba(56, 225, 196, 0.06); }
+.foot-app:hover { background: rgba(var(--accent-rgb), 0.06); }
 .foot-app:hover { color: var(--cyan); }
 .foot-app:disabled { cursor: progress; }
 .foot-app__note:empty { display: none; }
@@ -810,7 +856,7 @@ body.boot-pending .hud { opacity: 0; }
 .toast {
   position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
   max-width: 80vw;
-  background: #2a1d12; border: 1px solid var(--amber); color: var(--amber);
+  background: var(--toast-bg, #2a1d12); border: 1px solid var(--amber); color: var(--amber);
   padding: 10px 16px; border-radius: 10px; font-size: 13px;
 }
 .toast--demo {
@@ -818,7 +864,7 @@ body.boot-pending .hud { opacity: 0; }
   max-width: 640px;
   padding: 18px 24px;
   font-size: 17px; line-height: 1.45; text-align: center;
-  box-shadow: 0 0 0 9999px rgba(6, 8, 16, 0.55);
+  box-shadow: 0 0 0 9999px rgba(var(--bg-rgb), 0.55);
 }
 
 @media (prefers-reduced-motion: reduce) {

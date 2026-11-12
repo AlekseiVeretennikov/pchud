@@ -1,91 +1,86 @@
-/* Панель «Настройки» (кнопка в подвале): фон, его яркость и слои, эффекты, окно, заставка.
+/* Панель «Настройки» (кнопка в подвале).
+   Сверху — выбор темы (когда тем больше одной), дальше — разделы текущей темы
+   (их описывает сама тема, web/themes/*.js), внизу — общие для всех тем.
    Изменения применяются сразу, а через полсекунды тишины уходят в config.json
-   (backend: Api.save_settings — дописывает только эти ключи, остальное не трогает). */
+   (backend: Api.save_settings — дописывает только эти ключи, остальное не трогает).
+   Смена темы сохраняется сразу и перезагружает экран HUD. */
 
 (() => {
   const SAVE_DELAY_MS = 500;
 
-  // описание панели: ключи совпадают с config.json
-  const SECTIONS = [
-    { title: "Фон", items: [
-      { key: "background", type: "toggle", label: "Анимированный фон", on: "cipher-rain", off: "none" },
-      { key: "bg_brightness", type: "range", label: "Яркость", min: 10, max: 100, step: 5, unit: "%", needs: "background" },
-      { key: "bg_field", type: "toggle", label: "Поле символов", hint: "тусклые буквы по всему экрану", needs: "background" },
-      { key: "bg_drops", type: "toggle", label: "Капли", hint: "стекающие струйки", needs: "background" },
-      { key: "bg_words", type: "toggle", label: "Слова", hint: "SYSTEM OK, ошибки красным", needs: "background" },
-    ] },
-    { title: "Эффекты", items: [
-      { key: "label_glitch", type: "toggle", label: "Шифрование подписей",
-        hint: "буквы в подписях вроде «Нагрузка» на миг становятся символами" },
-      { key: "name_noise", type: "toggle", label: "Помехи в названиях CPU и GPU",
-        hint: "название модели изредка рябит, как плохой сигнал" },
-      { key: "fx_rate", type: "choice", label: "Частота",
-        options: [["low", "Редко"], ["normal", "Обычно"], ["high", "Часто"]],
-        hint: "для обоих эффектов", needsAny: ["label_glitch", "name_noise"] },
-    ] },
-    { title: "Окно", items: [
-      { key: "start_fullscreen", type: "toggle", label: "Всегда открывать на весь экран",
-        hint: "на мониторе, где HUD закрыли; F11 переключает до закрытия" },
-    ] },
-    { title: "Заставка при запуске", items: [
-      { key: "boot_mode", type: "choice", options: [["hacker", "Взлом"], ["short", "Короткая"], ["off", "Выкл."]],
-        hint: "применится при следующем запуске" },
-    ] },
-  ];
+  // общие для всех тем: ключи в корне config.json; список мониторов приходит из get_config
+  function generalSections(monitors) {
+    const items = [];
+    if (monitors.length > 1) {
+      items.push({ key: "monitor", type: "choice", label: "Открывать на", vertical: true,
+        options: [["auto", "Мониторе, где HUD закрыли"], ...monitors.map((m) => [m.device, m.label])],
+        hint: "применится при следующем запуске" });
+    }
+    items.push({ key: "start_fullscreen", type: "toggle", label: "Всегда открывать на весь экран",
+      hint: "F11 переключает до закрытия HUD" });
+    return [{ title: "Окно", items }];
+  }
+  let monitors = [];
 
-  let config = {};
+  let theme = null;
+  let themeSettings = {};      // настройки текущей темы → themes.<id>
+  let general = {};            // общие → корень config.json
   let panel, statusEl, saveTimer = 0;
-  const pendingSave = {};
+  let pendingTheme = {}, pendingGeneral = {};
 
-  const background = () => (window.HudBackgrounds || {})["cipher-rain"];
+  // где лежит значение пункта: у темы или в общих
+  const store = (scope) => (scope === "theme" ? themeSettings : general);
 
   // применить к живому HUD (кроме заставки — она только при запуске)
   function apply() {
-    const bg = background();
-    if (bg) {
-      bg.setOptions({
-        brightness: config.bg_brightness / 100,
-        field: config.bg_field, drops: config.bg_drops, words: config.bg_words,
-      });
-      if (config.background === "none") bg.stop();
-      else bg.start(document.getElementById("hud-bg"));
-    }
-    if (window.HudLabelGlitch) {
-      window.HudLabelGlitch.setEnabled(config.label_glitch);
-      window.HudLabelGlitch.setRate(config.fx_rate);
-    }
-    if (window.HudNameFx) {
-      window.HudNameFx.setNoiseEnabled(config.name_noise);
-      window.HudNameFx.setNoiseRate(config.fx_rate);
-    }
-    if (panel) {
-      panel.querySelectorAll("[data-needs]").forEach((row) => {
-        row.classList.toggle("settings__row--off", config[row.dataset.needs] === "none");
-      });
-      // «Частота» бледнеет, когда оба эффекта выключены
-      panel.querySelectorAll("[data-needs-any]").forEach((row) => {
-        row.classList.toggle("settings__row--off", !row.dataset.needsAny.split(" ").some((k) => config[k]));
-      });
-    }
+    theme.apply(themeSettings);
+    if (!panel) return;
+    panel.querySelectorAll("[data-needs]").forEach((row) => {
+      const v = store(row.dataset.scope)[row.dataset.needs];
+      row.classList.toggle("settings__row--off", v === "none" || v === false);
+    });
+    // пункт бледнеет, когда выключено всё, от чего он зависит
+    panel.querySelectorAll("[data-needs-any]").forEach((row) => {
+      const s = store(row.dataset.scope);
+      row.classList.toggle("settings__row--off", !row.dataset.needsAny.split(" ").some((k) => s[k]));
+    });
   }
 
-  function change(key, value) {
-    config[key] = value;
+  function change(scope, key, value) {
+    store(scope)[key] = value;
+    if (scope === "theme") pendingTheme[key] = value;
+    else pendingGeneral[key] = value;
     apply();
-    pendingSave[key] = value;
     clearTimeout(saveTimer);
     setStatus("…");
     saveTimer = setTimeout(save, SAVE_DELAY_MS);
   }
 
+  async function send(changes) {
+    if (!window.pywebview) return { ok: false, error: "в браузере не сохраняется" };
+    try { return await window.pywebview.api.save_settings(changes); }
+    catch (e) { return { ok: false, error: String(e) }; }
+  }
+
   async function save() {
-    const changes = { ...pendingSave };
-    Object.keys(pendingSave).forEach((k) => delete pendingSave[k]);
-    if (!window.pywebview) { setStatus("в браузере не сохраняется"); return; }
-    let res;
-    try { res = await window.pywebview.api.save_settings(changes); }
-    catch (e) { res = { ok: false, error: String(e) }; }
+    clearTimeout(saveTimer);
+    const changes = { ...pendingGeneral };
+    if (Object.keys(pendingTheme).length) changes.themes = { [theme.id]: { ...pendingTheme } };
+    pendingTheme = {}; pendingGeneral = {};
+    if (!Object.keys(changes).length) return { ok: true };
+    const res = await send(changes);
     setStatus(res.ok ? "сохранено" : `не сохранено: ${res.error}`, !res.ok);
+    return res;
+  }
+
+  // другая тема: сначала дописываем несохранённое, потом перезагружаем экран HUD
+  async function switchTheme(id) {
+    if (id === theme.id) return;
+    setStatus("переключаю тему…");
+    await save();
+    const res = await send({ theme: id });
+    if (res.ok) location.reload();
+    else setStatus(`не сохранено: ${res.error}`, true);
   }
 
   function setStatus(text, error = false) {
@@ -102,8 +97,11 @@
     return e;
   }
 
-  function buildItem(item) {
+  // item.onPick — свой обработчик вместо сохранения (выбор темы)
+  function buildItem(item, scope) {
+    const values = () => store(scope);
     const row = el("div", `settings__row settings__row--${item.type}`);
+    row.dataset.scope = scope;
     if (item.needs) row.dataset.needs = item.needs;
     if (item.needsAny) row.dataset.needsAny = item.needsAny.join(" ");
     if (item.label) {
@@ -115,10 +113,10 @@
     if (item.type === "toggle") {
       const sw = el("button", "settings__switch");
       sw.type = "button";
-      const isOn = () => (item.on ? config[item.key] !== item.off : !!config[item.key]);
+      const isOn = () => (item.on ? values()[item.key] !== item.off : !!values()[item.key]);
       const sync = () => { sw.setAttribute("aria-pressed", String(isOn())); };
       sw.addEventListener("click", () => {
-        change(item.key, item.on ? (isOn() ? item.off : item.on) : !isOn());
+        change(scope, item.key, item.on ? (isOn() ? item.off : item.on) : !isOn());
         sync();
       });
       sync();
@@ -126,24 +124,34 @@
     } else if (item.type === "range") {
       const wrap = el("div", "settings__range");
       const input = el("input");
-      Object.assign(input, { type: "range", min: item.min, max: item.max, step: item.step, value: config[item.key] });
-      const out = el("span", "settings__value", `${config[item.key]}${item.unit}`);
+      Object.assign(input, { type: "range", min: item.min, max: item.max, step: item.step, value: values()[item.key] });
+      const out = el("span", "settings__value", `${values()[item.key]}${item.unit}`);
       input.addEventListener("input", () => {
         out.textContent = `${input.value}${item.unit}`;
-        change(item.key, Number(input.value));
+        change(scope, item.key, Number(input.value));
       });
       wrap.append(input, out);
       row.append(wrap);
     } else if (item.type === "choice") {
-      const group = el("div", "settings__choice");
+      const group = el("div", `settings__choice${item.vertical ? " settings__choice--vertical" : ""}`);
+      const current = () => (item.value ? item.value() : values()[item.key]);
       const sync = () => group.querySelectorAll("button").forEach((b) => {
-        b.setAttribute("aria-pressed", String(b.dataset.value === config[item.key]));
+        b.setAttribute("aria-pressed", String(b.dataset.value === current()));
       });
-      item.options.forEach(([value, text]) => {
+      item.options.forEach(([value, text, swatch]) => {
         const b = el("button", "", text);
         b.type = "button";
         b.dataset.value = value;
-        b.addEventListener("click", () => { change(item.key, value); sync(); });
+        if (swatch) {
+          const dot = el("span", "settings__swatch");
+          dot.style.background = swatch;
+          b.prepend(dot);
+        }
+        b.addEventListener("click", () => {
+          if (item.onPick) item.onPick(value);
+          else change(scope, item.key, value);
+          sync();
+        });
         group.append(b);
       });
       sync();
@@ -152,6 +160,13 @@
       if (item.hint && !item.label) row.append(el("div", "settings__hint settings__hint--below", item.hint));
     }
     return row;
+  }
+
+  function buildSection(section, scope, extraClass = "") {
+    const box = el("div", `settings__section${extraClass}`);
+    box.append(el("div", "settings__section-title", section.title));
+    section.items.forEach((item) => box.append(buildItem(item, scope)));
+    return box;
   }
 
   function buildPanel() {
@@ -165,16 +180,23 @@
     close.addEventListener("click", hide);
     head.append(close);
     panel.append(head);
-    SECTIONS.forEach((section) => {
-      const box = el("div", "settings__section");
-      box.append(el("div", "settings__section-title", section.title));
-      section.items.forEach((item) => box.append(buildItem(item)));
-      panel.append(box);
-    });
+
+    const themes = window.HudThemes.list();
+    if (themes.length > 1) {
+      panel.append(buildSection({ title: "Тема", items: [{
+        key: "theme", type: "choice",
+        options: themes.map((t) => [t.id, t.name]),
+        value: () => theme.id,
+        onPick: switchTheme,
+        hint: "у каждой темы свои настройки ниже",
+      }] }, "general"));
+    }
+    theme.sections.forEach((section) => panel.append(buildSection(section, "theme")));
+    generalSections(monitors).forEach((section) => panel.append(buildSection(section, "general", " settings__section--general")));
+
     statusEl = el("div", "settings__status", "изменения сохраняются сами");
     panel.append(statusEl);
     document.body.append(panel);
-    apply();
   }
 
   function show() { panel.hidden = false; }
@@ -182,11 +204,17 @@
   function toggle() { panel.hidden ? show() : hide(); }
 
   window.HudSettings = {
-    init(cfg) {
+    // cfg — ответ get_config; activeTheme и её настройки уже выбрал app.js
+    init(cfg, activeTheme, settings) {
       if (panel) return;
-      config = { ...cfg };
-      if (config.background === "letter-glitch") config.background = "cipher-rain";   // имя до 0.1.1
+      theme = activeTheme;
+      themeSettings = settings;
+      monitors = Array.isArray(cfg.monitors) ? cfg.monitors : [];
+      // выбранный монитор сейчас не подключён — показываем «где закрыли», но не перезаписываем
+      const mon = monitors.some((m) => m.device === cfg.monitor) ? cfg.monitor : "auto";
+      general = { start_fullscreen: !!cfg.start_fullscreen, monitor: mon };
       buildPanel();
+      apply();
       const btn = document.getElementById("settings-btn");
       if (btn && !btn.dataset.ready) {
         btn.dataset.ready = "1";

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -24,6 +25,7 @@ from pathlib import Path
 
 from . import __version__
 from .manager import SourceManager
+from .monitors import DEVICE_RE
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
@@ -53,32 +55,67 @@ DEFAULT_CONFIG = {
     "metric_overrides": {},
     "drives": None,        # список букв (["C:", "Z:"]) или None = все диски с датчиком
     "vram_total_gb": None, # полный объём VRAM для подписи "занято/всего"
-    "background": "cipher-rain",  # файл из web/backgrounds/ или "none"
     # всё ниже меняется и в панели «Настройки» внизу HUD
-    "bg_brightness": 100,  # яркость фона, 10–100 %
-    "bg_field": True,      # поле тусклых символов
-    "bg_drops": True,      # стекающие капли
-    "bg_words": True,      # проступающие слова
-    "label_glitch": True,  # «шифрование» букв в подписях
-    "name_noise": True,    # помехи в названиях CPU/GPU
-    "fx_rate": "normal",   # как часто идут эти два эффекта: "low", "normal" или "high"
-    "boot_mode": "hacker", # заставка: "hacker" (взлом), "short" (короткая) или "off"
-    "start_fullscreen": False,  # «Всегда открывать на весь экран»
+    "start_fullscreen": False,  # «Всегда открывать на весь экран» — общая для всех тем
+    # «Открывать на»: "auto" — на мониторе, где HUD закрыли, или имя монитора Windows
+    # ("\\\\.\\DISPLAY5"); если его нет (выключен) — как "auto"
+    "monitor": "auto",
+    "theme": "matrix",          # тема оформления (web/themes/)
+    # настройки каждой темы отдельно: {"matrix": {"palette": "green", ...}}.
+    # Значения по умолчанию и допустимые значения знает сама тема (web/themes/*.js)
+    "themes": {},
 }
 
-# что панель «Настройки» может менять, и как проверять значение
-SETTINGS = {
-    "background": lambda v: v in ("cipher-rain", "none"),
-    "bg_brightness": lambda v: isinstance(v, int) and not isinstance(v, bool) and 10 <= v <= 100,
-    "bg_field": lambda v: isinstance(v, bool),
-    "bg_drops": lambda v: isinstance(v, bool),
-    "bg_words": lambda v: isinstance(v, bool),
-    "label_glitch": lambda v: isinstance(v, bool),
-    "name_noise": lambda v: isinstance(v, bool),
-    "fx_rate": lambda v: v in ("low", "normal", "high"),
-    "boot_mode": lambda v: v in ("hacker", "short", "off"),
-    "start_fullscreen": lambda v: isinstance(v, bool),
-}
+# До 0.1.8 тем не было: эти ключи лежали в корне config.json и относились к «Матрице»
+_LEGACY_MATRIX_KEYS = ("background", "bg_brightness", "bg_field", "bg_drops", "bg_words",
+                       "label_glitch", "name_noise", "fx_rate", "boot_mode")
+
+_ID = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+
+
+def _is_scalar(v) -> bool:
+    return isinstance(v, bool) or (isinstance(v, (int, float)) and abs(v) < 1e6) or \
+        (isinstance(v, str) and len(v) <= 64)
+
+
+def _settings_error(changes) -> str | None:
+    """Что панель «Настройки» может менять. Ключи тем проверяем по форме (имя, простое
+    значение) — допустимые значения знает сама тема и подставит своё при ошибке."""
+    if not isinstance(changes, dict):
+        return "ожидался объект"
+    for key, value in changes.items():
+        if key == "start_fullscreen":
+            if not isinstance(value, bool):
+                return key
+        elif key == "monitor":
+            if not isinstance(value, str) or not (value == "auto" or DEVICE_RE.match(value)):
+                return key
+        elif key == "theme":
+            if not isinstance(value, str) or not _ID.match(value):
+                return key
+        elif key == "themes":
+            if not isinstance(value, dict):
+                return key
+            for tid, opts in value.items():
+                if not _ID.match(str(tid)) or not isinstance(opts, dict):
+                    return f"themes.{tid}"
+                for k, v in opts.items():
+                    if not _ID.match(str(k)) or not _is_scalar(v):
+                        return f"themes.{tid}.{k}"
+        else:
+            return key
+    return None
+
+
+def _deep_merge(base: dict, changes: dict) -> dict:
+    """Вложенные словари (window, themes.matrix) дополняем, а не заменяем целиком."""
+    out = dict(base)
+    for key, value in changes.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
 
 
 def load_config() -> dict:
@@ -86,18 +123,23 @@ def load_config() -> dict:
     if CONFIG_PATH.exists():
         try:
             user = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            cfg.update({k: v for k, v in user.items() if k != "window"})
-            if "window" in user:
-                cfg["window"].update(user["window"])
-            # до 0.1.5 заставка включалась флагом boot_animation
-            if user.get("boot_animation") is False and "boot_mode" not in user:
-                cfg["boot_mode"] = "off"
+            cfg = _deep_merge(cfg, {k: v for k, v in user.items() if k not in _LEGACY_MATRIX_KEYS})
+            if not isinstance(cfg.get("themes"), dict):
+                cfg["themes"] = {}
+            if not isinstance(cfg["themes"].get("matrix"), dict):
+                cfg["themes"]["matrix"] = {}
+            # старые ключи из корня переезжают в «Матрицу», если там их ещё нет
+            matrix = cfg["themes"]["matrix"]
+            legacy = {k: user[k] for k in _LEGACY_MATRIX_KEYS if k in user}
+            if user.get("boot_animation") is False:            # до 0.1.5
+                legacy.setdefault("boot_mode", "off")
+            if user.get("label_glitch") is False:              # до 0.1.5 выключал и помехи
+                legacy.setdefault("name_noise", False)
+            for k, v in legacy.items():
+                matrix.setdefault(k, v)
             # «fullscreen» в config.json раньше означал то же, что теперь start_fullscreen
             if user.get("fullscreen") is True and "start_fullscreen" not in user:
                 cfg["start_fullscreen"] = True
-            # до 0.1.5 label_glitch выключал и помехи в названиях
-            if user.get("label_glitch") is False and "name_noise" not in user:
-                cfg["name_noise"] = False
         except (ValueError, OSError) as e:
             print(f"[config] не удалось прочитать config.json: {e}", file=sys.stderr)
     return cfg
@@ -111,15 +153,30 @@ def save_config_keys(changes: dict) -> None:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))   # ValueError, если файл битый
         if not isinstance(data, dict):
             raise ValueError("config.json не является объектом JSON")
-    for key, value in changes.items():
-        # вложенные словари (window) дополняем, а не заменяем целиком
-        if isinstance(value, dict) and isinstance(data.get(key), dict):
-            data[key] = {**data[key], **value}
-        else:
-            data[key] = value
+    data = _deep_merge(data, changes)
     tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, CONFIG_PATH)                                       # атомарно: файл не останется наполовину записанным
+
+
+from .monitors import find as find_monitor, labeled_monitors  # noqa: E402
+
+
+def _on_screen(x, y) -> bool:
+    """Есть ли сейчас монитор в точке окна (x, y — левый верхний угол; у развёрнутого
+    окна он на 8 px за краем монитора, поэтому смотрим чуть внутрь)."""
+    if x is None or y is None:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        user32.MonitorFromPoint.restype = wintypes.HMONITOR
+        user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+        MONITOR_DEFAULTTONULL = 0
+        return bool(user32.MonitorFromPoint(wintypes.POINT(int(x) + 50, int(y) + 50), MONITOR_DEFAULTTONULL))
+    except (AttributeError, OSError):
+        return True    # не Windows — проверить нечем, верим сохранённому
 
 
 class Api:
@@ -133,6 +190,9 @@ class Api:
         self._window = None
         self._fullscreen = bool(config.get("fullscreen") or config.get("start_fullscreen"))
         self._last_pos = None
+        # где окно было до последнего перемещения: сначала — запомненное в config.json
+        win = config.get("window") or {}
+        self._prev_pos = (win["x"], win["y"]) if win.get("x") is not None and win.get("y") is not None else None
 
     def set_window(self, window) -> None:
         self._window = window
@@ -148,8 +208,14 @@ class Api:
 
     # ── монитор, на котором HUD закрыли: там же он и откроется ──
     def window_moved(self, x: int, y: int) -> None:
-        if x > -10000 and y > -10000:          # свёрнутое окно Windows уводит на -32000
-            self._last_pos = (int(x), int(y))
+        if x <= -10000 or y <= -10000:         # свёрнутое окно Windows уводит на -32000
+            return
+        # Монитор, где было окно, пропал (портативный уснул или выключился) — это Windows
+        # сама перенесла окна на основной. Такой перенос не запоминаем: иначе HUD
+        # «забудет» портативный монитор и в следующий раз откроется на основном.
+        if self._prev_pos is not None and not _on_screen(*self._prev_pos):
+            return
+        self._last_pos = self._prev_pos = (int(x), int(y))
 
     def window_closing(self) -> None:
         if self._last_pos is None:
@@ -177,22 +243,25 @@ class Api:
     def get_config(self) -> dict:
         return {
             "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
-            "background": self._config["background"],
-            **{key: self._config[key] for key in SETTINGS},
+            "start_fullscreen": self._config["start_fullscreen"],
+            "monitor": self._config["monitor"],
+            "monitors": [{"device": m["device"], "label": m["label"]} for m in labeled_monitors()],
+            "theme": self._config["theme"],
+            "themes": self._config["themes"],
             "fullscreen": self._fullscreen,
             "version": __version__,
         }
 
     def save_settings(self, changes: dict) -> dict:
         """Панель «Настройки»: применить и дописать в config.json, не трогая остальные ключи."""
-        bad = [k for k, v in (changes or {}).items() if k not in SETTINGS or not SETTINGS[k](v)]
+        bad = _settings_error(changes)
         if bad:
-            return {"ok": False, "error": f"недопустимые настройки: {', '.join(bad)}"}
+            return {"ok": False, "error": f"недопустимая настройка: {bad}"}
         try:
             save_config_keys(changes)
         except (OSError, ValueError) as e:
             return {"ok": False, "error": str(e)}
-        self._config.update(changes)
+        self._config.update(_deep_merge(self._config, changes))
         return {"ok": True}
 
 
@@ -252,6 +321,20 @@ def main() -> None:
 
     api = Api(manager, config)
     win_cfg = config["window"]
+    x, y = win_cfg["x"], win_cfg["y"]
+    # «Открывать на» конкретном мониторе — если он сейчас подключён
+    chosen = config.get("monitor", "auto")
+    if chosen != "auto":
+        mon = find_monitor(chosen)
+        if mon:
+            x, y = mon["x"] + 40, mon["y"] + 40     # развёрнутое окно займёт этот монитор целиком
+        else:
+            print(f"[pchud] монитора {chosen} сейчас нет — открываю там, где закрыли")
+    # запомненного монитора сейчас нет (портативный выключен) — открываемся на основном,
+    # а не за краем экрана; сам запомненный монитор в config.json остаётся
+    if x is not None and not _on_screen(x, y):
+        print(f"[pchud] монитора в точке {x},{y} сейчас нет — открываю на основном")
+        x = y = None
 
     window = webview.create_window(
         "PC HUD",
@@ -259,8 +342,8 @@ def main() -> None:
         js_api=api,
         width=win_cfg["width"],
         height=win_cfg["height"],
-        x=win_cfg["x"],
-        y=win_cfg["y"],
+        x=x,
+        y=y,
         frameless=win_cfg.get("frameless", False),
         easy_drag=win_cfg.get("frameless", False),
         background_color="#0a0e14",

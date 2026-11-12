@@ -137,6 +137,8 @@ function updateBar(key, value, colorFn) {
 const SPARK_LEN = 60; // 60 точек = окно 60 c при опросе 1 раз/с
 
 let _sparkStroke = null, _sparkFill = null;
+// тема сменила палитру — графики заново берут цвет из CSS
+window.resetSparkColors = () => { _sparkStroke = null; _sparkFill = null; };
 function sparkColors() {
   if (!_sparkStroke) {
     const c = getComputedStyle(document.documentElement).getPropertyValue("--cyan").trim() || "#3fdfb0";
@@ -487,8 +489,9 @@ function drawFrametime(canvas, hist) {
   // Ориентиры: ось Y в мс снизу вверх (0 внизу, 40 вверху), поэтому
   // линия 16.7 мс (60 FPS) лежит НИЖЕ линии 33.3 мс (30 FPS).
   ctx.save();
-  ctx.strokeStyle = "rgba(124, 138, 156, 0.35)";
-  ctx.fillStyle = "rgba(124, 138, 156, 0.75)";
+  const dim = getComputedStyle(document.documentElement).getPropertyValue("--dim-rgb").trim() || "124, 138, 156";
+  ctx.strokeStyle = `rgba(${dim}, 0.35)`;
+  ctx.fillStyle = `rgba(${dim}, 0.75)`;
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 4]);
   ctx.font = "9px 'JetBrains Mono', 'Consolas', monospace";
@@ -896,20 +899,16 @@ function demoSnapshot() {
   };
 }
 
-/* ── оформление из config.json: фон ("none" = без фона) и эффект подписей ── */
+/* ── тема оформления (web/themes/) и её настройки из config.json ── */
 async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
-  let config = {
-    background: "cipher-rain", bg_brightness: 100, bg_field: true, bg_drops: true, bg_words: true,
-    label_glitch: true, name_noise: true, boot_mode: "hacker", start_fullscreen: false, fx_rate: "normal", version: "",
-  };
+  let config = { theme: "matrix", themes: {}, start_fullscreen: false, fullscreen: false, version: "" };
   if (window.pywebview) Object.assign(config, await window.pywebview.api.get_config());
-  if (config.boot_mode === "off") window.HudBoot.skip();
-  else window.HudBoot.start(config.version, config.boot_mode);
-  // эффекты запускаются всегда, а включены ли — решает панель настроек
-  window.HudLabelGlitch.start();
-  window.HudNameFx.startNoise();
-  window.HudSettings.init(config);   // фон, его яркость и слои, выключатели эффектов
+  const theme = window.HudThemes.get(config.theme);
+  const settings = window.HudThemes.settingsFor(theme, (config.themes || {})[theme.id]);
+  document.documentElement.dataset.theme = theme.id;
+  theme.start(settings, { version: config.version });
+  window.HudSettings.init(config, theme, settings);   // строит панель и применяет настройки темы
   setupFullscreen(config.fullscreen);
 }
 
