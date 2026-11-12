@@ -15,8 +15,13 @@
       { key: "bg_words", type: "toggle", label: "Слова", hint: "SYSTEM OK, ошибки красным", needs: "background" },
     ] },
     { title: "Эффекты", items: [
-      { key: "label_glitch", type: "toggle", label: "Шифрование подписей" },
-      { key: "name_noise", type: "toggle", label: "Помехи в названиях CPU и GPU" },
+      { key: "label_glitch", type: "toggle", label: "Шифрование подписей",
+        hint: "буквы в подписях вроде «Нагрузка» на миг становятся символами" },
+      { key: "name_noise", type: "toggle", label: "Помехи в названиях CPU и GPU",
+        hint: "название модели изредка рябит, как плохой сигнал" },
+      { key: "fx_rate", type: "choice", label: "Частота",
+        options: [["low", "Редко"], ["normal", "Обычно"], ["high", "Часто"]],
+        hint: "для обоих эффектов", needsAny: ["label_glitch", "name_noise"] },
     ] },
     { title: "Окно", items: [
       { key: "start_fullscreen", type: "toggle", label: "Всегда открывать на весь экран",
@@ -45,11 +50,21 @@
       if (config.background === "none") bg.stop();
       else bg.start(document.getElementById("hud-bg"));
     }
-    if (window.HudLabelGlitch) window.HudLabelGlitch.setEnabled(config.label_glitch);
-    if (window.HudNameFx) window.HudNameFx.setNoiseEnabled(config.name_noise);
+    if (window.HudLabelGlitch) {
+      window.HudLabelGlitch.setEnabled(config.label_glitch);
+      window.HudLabelGlitch.setRate(config.fx_rate);
+    }
+    if (window.HudNameFx) {
+      window.HudNameFx.setNoiseEnabled(config.name_noise);
+      window.HudNameFx.setNoiseRate(config.fx_rate);
+    }
     if (panel) {
       panel.querySelectorAll("[data-needs]").forEach((row) => {
         row.classList.toggle("settings__row--off", config[row.dataset.needs] === "none");
+      });
+      // «Частота» бледнеет, когда оба эффекта выключены
+      panel.querySelectorAll("[data-needs-any]").forEach((row) => {
+        row.classList.toggle("settings__row--off", !row.dataset.needsAny.split(" ").some((k) => config[k]));
       });
     }
   }
@@ -90,6 +105,7 @@
   function buildItem(item) {
     const row = el("div", `settings__row settings__row--${item.type}`);
     if (item.needs) row.dataset.needs = item.needs;
+    if (item.needsAny) row.dataset.needsAny = item.needsAny.join(" ");
     if (item.label) {
       const label = el("div", "settings__label", item.label);
       if (item.hint) label.append(el("span", "settings__hint", item.hint));
@@ -132,7 +148,8 @@
       });
       sync();
       row.append(group);
-      if (item.hint) row.append(el("div", "settings__hint settings__hint--below", item.hint));
+      // без подписи слева пояснение идёт под кнопками (у подписи оно уже есть)
+      if (item.hint && !item.label) row.append(el("div", "settings__hint settings__hint--below", item.hint));
     }
     return row;
   }

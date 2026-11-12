@@ -1,5 +1,5 @@
-/* Эффект "шифрования" подписей: почти без перерыва в 1-2 новых подписях меняется
-   около трети букв, одновременно таких подписей обычно 2-3. Числа и названия устройств в список не входят,
+/* Эффект "шифрования" подписей: в нескольких подписях на миг меняется около трети
+   букв; как часто и сколько подписей за раз — настройка «Частота» (RATES). Числа и названия устройств в список не входят,
    поэтому эффект не может исказить показания. */
 
 (() => {
@@ -8,12 +8,14 @@
     ".card__kind", ".drive--head span", ".fps-panel__row > span",
   ].join(", ");
   const GLYPHS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#$&*+=/<>";
-  const PAUSE_MIN_MS = 600;
-  const PAUSE_MAX_MS = 1200;
+  // «Частота» в панели настроек: пауза между вспышками и сколько подписей за раз
+  const RATES = {
+    low:    { pause: [2000, 4000], count: [1, 2] },
+    normal: { pause: [600, 1200],  count: [3, 5] },
+    high:   { pause: [350, 700],   count: [4, 6] },
+  };
   const DURATION_MIN_MS = 900;   // эффекты перекрываются: подпись в эффекте повторно не выбирается
   const DURATION_MAX_MS = 1500;
-  const LABELS_MIN = 3;
-  const LABELS_MAX = 5;
   const LETTER_SHARE = 0.35;     // доля заменяемых букв, но не меньше двух
   const STEP_MS = 70;
 
@@ -76,23 +78,34 @@
 
   let enabled = true;
   let started = false;
-  function start() {
-    if (started || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    started = true;
-    const schedule = () => setTimeout(() => {
+  let rate = RATES.normal;
+  let timer = 0;
+  const schedule = () => {
+    clearTimeout(timer);
+    const [lo, hi] = rate.pause;
+    timer = setTimeout(() => {
       if (enabled && !document.hidden) {
         const all = labels();
-        const count = LABELS_MIN + randomInt(LABELS_MAX - LABELS_MIN + 1);
+        const [min, max] = rate.count;
+        const count = min + randomInt(max - min + 1);
         for (let i = 0; i < count && all.length; i++) {
           glitch(all.splice(randomInt(all.length), 1)[0]);
         }
       }
       schedule();
-    }, PAUSE_MIN_MS + Math.random() * (PAUSE_MAX_MS - PAUSE_MIN_MS));
+    }, lo + Math.random() * (hi - lo));
+  };
+  function start() {
+    if (started || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    started = true;
     schedule();
   }
 
-  // из панели настроек: выключить/включить без перезапуска
+  // из панели настроек: выключить/включить и сменить частоту без перезапуска
   const setEnabled = (v) => { enabled = !!v; };
-  window.HudLabelGlitch = { start, setEnabled, glitch, labels };
+  const setRate = (name) => {
+    rate = RATES[name] || RATES.normal;
+    if (started) schedule();       // новая пауза сразу, а не после старой длинной
+  };
+  window.HudLabelGlitch = { start, setEnabled, setRate, glitch, labels };
 })();

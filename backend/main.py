@@ -61,6 +61,7 @@ DEFAULT_CONFIG = {
     "bg_words": True,      # проступающие слова
     "label_glitch": True,  # «шифрование» букв в подписях
     "name_noise": True,    # помехи в названиях CPU/GPU
+    "fx_rate": "normal",   # как часто идут эти два эффекта: "low", "normal" или "high"
     "boot_mode": "hacker", # заставка: "hacker" (взлом), "short" (короткая) или "off"
     "start_fullscreen": False,  # «Всегда открывать на весь экран»
 }
@@ -74,6 +75,7 @@ SETTINGS = {
     "bg_words": lambda v: isinstance(v, bool),
     "label_glitch": lambda v: isinstance(v, bool),
     "name_noise": lambda v: isinstance(v, bool),
+    "fx_rate": lambda v: v in ("low", "normal", "high"),
     "boot_mode": lambda v: v in ("hacker", "short", "off"),
     "start_fullscreen": lambda v: isinstance(v, bool),
 }

@@ -1,6 +1,6 @@
 /* Эффекты названий CPU и GPU.
 
-   1. Помехи сигнала (постоянно): раз в 8–15 с одно из названий (по очереди)
+   1. Помехи сигнала (постоянно): раз в 8–15 с (настройка «Частота») одно из названий (по очереди)
       на ~0,4 с дёргается и расслаивается на голубую и красную копии.
       Иногда помеха идёт двойным импульсом.
    2. Допечатка (только в заставке при запуске, boot.js): название печатается
@@ -10,8 +10,8 @@
 
 (() => {
   const SELECTOR = '[data-bind="cpu_name"], [data-bind="gpu_name"]';
-  const NOISE_MIN_MS = 8000;
-  const NOISE_MAX_MS = 15000;
+  // пауза между помехами для настройки «Частота», мс
+  const NOISE_RATES = { low: [30000, 60000], normal: [8000, 15000], high: [4000, 8000] };
   const NOISE_MS = 420;
   const TYPE_MS = 38;       // на символ
   const TAIL_MS = 700;      // курсор мигает после печати
@@ -34,10 +34,17 @@
 
   let turn = 0;
   let noiseEnabled = true;
+  let noiseRate = NOISE_RATES.normal;
+  let noiseTimer = 0;
+  function scheduleNoise(delay) {
+    clearTimeout(noiseTimer);
+    const [lo, hi] = noiseRate;
+    noiseTimer = setTimeout(noiseTick, delay ?? lo + Math.random() * (hi - lo));
+  }
   function noiseTick() {
     const names = visible();
     if (noiseEnabled && names.length) noise(names[turn++ % names.length]);
-    setTimeout(noiseTick, NOISE_MIN_MS + Math.random() * (NOISE_MAX_MS - NOISE_MIN_MS));
+    scheduleNoise();
   }
 
   // ── допечатка ──
@@ -86,9 +93,13 @@
     startNoise(firstDelay = 6000) {
       if (started) return;
       started = true;
-      setTimeout(noiseTick, firstDelay);
+      scheduleNoise(firstDelay);
     },
     setNoiseEnabled(v) { noiseEnabled = !!v; },
+    setNoiseRate(name) {
+      noiseRate = NOISE_RATES[name] || NOISE_RATES.normal;
+      if (started) scheduleNoise();   // новая пауза сразу, а не после старой длинной
+    },
     typeInAll: () => Promise.all(visible().map(typeIn)),
     noise,
     typeIn,
