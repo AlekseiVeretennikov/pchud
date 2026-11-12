@@ -292,6 +292,28 @@ function renderCores(cores, groups, metrics) {
 /* ── плитки материнской платы ────────────────────────── */
 const MB_HIST_LEN = 600; // окно 10 минут при тике 1 с
 
+/* Сглаживание для 10-минутных плиток: скользящее среднее по соседним секундам.
+   Датчики отдают целые градусы, а нагрузка шины скачет 0↔100 каждую секунду —
+   без среднего линия превращается в частокол. Числа на плитках не трогаем,
+   меняется только линия; резкий рост всё равно виден, просто без дрожи. */
+function smoothHist(hist, radius) {
+  const n = hist ? hist.length : 0;
+  if (n < 3 || radius < 1) return hist || [];
+  const out = new Array(n);
+  let sum = 0, lo = 0, hi = -1;
+  for (let i = 0; i < n; i++) {
+    // окно [i - radius, i + radius], у краёв — сколько есть
+    const a = Math.max(0, i - radius), b = Math.min(n - 1, i + radius);
+    while (hi < b) sum += hist[++hi];
+    while (lo < a) sum -= hist[lo++];
+    out[i] = sum / (hi - lo + 1);
+  }
+  return out;
+}
+const TEMP_SMOOTH = 4;  // ±4 с: ступеньки в 1 °C становятся плавными
+const FAN_SMOOTH = 4;
+const BUS_SMOOTH = 8;   // нагрузка шины дёргается сильнее всего
+
 // температурный спарклайн: автошкала с минимальным диапазоном 4 единицы,
 // реальный разброс центрируется в окне — ровная температура рисуется
 // спокойной почти горизонтальной линией, а не пилой на весь канвас
@@ -301,6 +323,7 @@ function drawTempSpark(canvas, hist) {
     drawSpark(canvas, [], 1, 0, MB_HIST_LEN, false);
     return;
   }
+  hist = smoothHist(hist, TEMP_SMOOTH);
   let lo = Infinity, hi = -Infinity;
   for (const v of hist) { if (v < lo) lo = v; if (v > hi) hi = v; }
   const span = Math.max(hi - lo, 4);
@@ -416,7 +439,7 @@ function renderGpuTiles(snap, m) {
   const fanHist = hist.fan || [];
   const fanCanvas = document.getElementById("gpu-fan-spark");
   if (fanCanvas) {
-    drawSpark(fanCanvas, fanHist, Math.max(2000, ...fanHist), 0, MB_HIST_LEN, false);
+    drawSpark(fanCanvas, smoothHist(fanHist, FAN_SMOOTH), Math.max(2000, ...fanHist), 0, MB_HIST_LEN, false);
   }
   const fanSub = document.getElementById("gpu-fan-sub");
   if (fanSub) {
@@ -434,7 +457,7 @@ function renderGpuTiles(snap, m) {
     pcieVal.style.color = m.pcie_speed ? "var(--cyan)" : "var(--ink-dim)";
   }
   const busCanvas = document.getElementById("gpu-bus-spark");
-  if (busCanvas) drawSpark(busCanvas, hist.bus || [], 100, 0, MB_HIST_LEN, false);
+  if (busCanvas) drawSpark(busCanvas, smoothHist(hist.bus || [], BUS_SMOOTH), 100, 0, MB_HIST_LEN, false);
   const busSub = document.getElementById("gpu-bus-sub");
   if (busSub) {
     countText(busSub, m.bus_load
@@ -878,7 +901,7 @@ async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
   let config = {
     background: "cipher-rain", bg_brightness: 100, bg_field: true, bg_drops: true, bg_words: true,
-    label_glitch: true, name_noise: true, boot_mode: "hacker", start_fullscreen: false, version: "",
+    label_glitch: true, name_noise: true, boot_mode: "hacker", start_fullscreen: false, fx_rate: "normal", version: "",
   };
   if (window.pywebview) Object.assign(config, await window.pywebview.api.get_config());
   if (config.boot_mode === "off") window.HudBoot.skip();
