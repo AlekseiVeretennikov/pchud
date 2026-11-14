@@ -1,8 +1,8 @@
 """Мониторы Windows: список для настройки «Открывать на» и поиск выбранного при запуске.
 
-Монитор запоминается по имени устройства Windows (\\\\.\\DISPLAY5). Модель монитора
-Windows обычно не знает («Универсальный монитор PnP»), поэтому в настройках он
-подписан по расположению относительно основного и разрешению: «Справа · 1920×1080».
+Монитор запоминается по имени устройства Windows (\\\\.\\DISPLAY5), а в настройках
+подписан названием модели из самого монитора (как в «Параметры → Дисплей») и
+разрешением: «DELL U3423WE · 3440×1440».
 """
 
 from __future__ import annotations
@@ -57,28 +57,108 @@ def list_monitors() -> list[dict]:
     return out
 
 
-def _side(m: dict, primary: dict) -> str:
-    """Где монитор относительно основного — по центрам."""
-    dx = (m["x"] + m["width"] / 2) - (primary["x"] + primary["width"] / 2)
-    dy = (m["y"] + m["height"] / 2) - (primary["y"] + primary["height"] / 2)
-    if abs(dx) >= abs(dy):
-        return "Справа" if dx > 0 else "Слева"
-    return "Снизу" if dy > 0 else "Сверху"
+# ── названия моделей: тот же источник, что у «Параметры → Дисплей» ──
+# QueryDisplayConfig даёт пары «источник ↔ монитор»; у источника — имя \\.\DISPLAYn
+# (как у EnumDisplayMonitors), у монитора — название модели из его EDID.
+
+class _LUID(ctypes.Structure):
+    _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+
+
+class _PATH_SOURCE(ctypes.Structure):
+    _fields_ = [("adapterId", _LUID), ("id", ctypes.c_uint32),
+                ("modeInfoIdx", ctypes.c_uint32), ("statusFlags", ctypes.c_uint32)]
+
+
+class _PATH_TARGET(ctypes.Structure):
+    _fields_ = [("adapterId", _LUID), ("id", ctypes.c_uint32), ("modeInfoIdx", ctypes.c_uint32),
+                ("outputTechnology", ctypes.c_uint32), ("rotation", ctypes.c_uint32),
+                ("scaling", ctypes.c_uint32), ("refreshNum", ctypes.c_uint32),
+                ("refreshDen", ctypes.c_uint32), ("scanLineOrdering", ctypes.c_uint32),
+                ("targetAvailable", wintypes.BOOL), ("statusFlags", ctypes.c_uint32)]
+
+
+class _PATH_INFO(ctypes.Structure):
+    _fields_ = [("sourceInfo", _PATH_SOURCE), ("targetInfo", _PATH_TARGET), ("flags", ctypes.c_uint32)]
+
+
+class _MODE_INFO(ctypes.Structure):
+    _fields_ = [("infoType", ctypes.c_uint32), ("id", ctypes.c_uint32), ("adapterId", _LUID),
+                ("info", ctypes.c_uint64 * 6)]      # 48 байт режима — нам не нужны
+
+
+class _HEADER(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_uint32), ("size", ctypes.c_uint32),
+                ("adapterId", _LUID), ("id", ctypes.c_uint32)]
+
+
+class _SOURCE_NAME(ctypes.Structure):
+    _fields_ = [("header", _HEADER), ("viewGdiDeviceName", wintypes.WCHAR * 32)]
+
+
+class _TARGET_NAME(ctypes.Structure):
+    _fields_ = [("header", _HEADER), ("flags", ctypes.c_uint32), ("outputTechnology", ctypes.c_uint32),
+                ("edidManufactureId", ctypes.c_uint16), ("edidProductCodeId", ctypes.c_uint16),
+                ("connectorInstance", ctypes.c_uint32),
+                ("monitorFriendlyDeviceName", wintypes.WCHAR * 64),
+                ("monitorDevicePath", wintypes.WCHAR * 128)]
+
+
+def monitor_names() -> dict[str, str]:
+    """{"\\\\.\\DISPLAY5": "LG ULTRAGEAR"} — для мониторов, которые сообщают модель."""
+    try:
+        user32 = ctypes.windll.user32
+    except AttributeError:
+        return {}
+    QDC_ONLY_ACTIVE_PATHS = 2
+    GET_SOURCE_NAME, GET_TARGET_NAME = 1, 2
+    n_paths, n_modes = ctypes.c_uint32(), ctypes.c_uint32()
+    try:
+        if user32.GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, ctypes.byref(n_paths), ctypes.byref(n_modes)):
+            return {}
+        paths = (_PATH_INFO * n_paths.value)()
+        modes = (_MODE_INFO * n_modes.value)()
+        if user32.QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, ctypes.byref(n_paths), paths,
+                                     ctypes.byref(n_modes), modes, None):
+            return {}
+        names = {}
+        for path in paths[:n_paths.value]:
+            src = _SOURCE_NAME()
+            src.header.type, src.header.size = GET_SOURCE_NAME, ctypes.sizeof(_SOURCE_NAME)
+            src.header.adapterId, src.header.id = path.sourceInfo.adapterId, path.sourceInfo.id
+            tgt = _TARGET_NAME()
+            tgt.header.type, tgt.header.size = GET_TARGET_NAME, ctypes.sizeof(_TARGET_NAME)
+            tgt.header.adapterId, tgt.header.id = path.targetInfo.adapterId, path.targetInfo.id
+            if user32.DisplayConfigGetDeviceInfo(ctypes.byref(src)) or \
+                    user32.DisplayConfigGetDeviceInfo(ctypes.byref(tgt)):
+                continue
+            name = tgt.monitorFriendlyDeviceName.strip()
+            if name and src.viewGdiDeviceName not in names:   # дубль экрана — первое имя
+                names[src.viewGdiDeviceName] = name
+        return names
+    except OSError:
+        return {}
 
 
 def labeled_monitors() -> list[dict]:
-    """Мониторы с подписями для панели «Настройки»: основной первым, дальше слева направо."""
+    """Мониторы с подписями для панели «Настройки»: «DELL U3423WE · 3440×1440»,
+    основной первым, дальше слева направо. Без названия модели (так бывает у
+    встроенных экранов ноутбуков) — «Монитор 2 · 1920×1080»."""
     mons = list_monitors()
-    primary = next((m for m in mons if m["primary"]), mons[0] if mons else None)
-    if primary is None:
+    if not mons:
         return []
+    names = monitor_names()
     for m in mons:
-        name = "Основной" if m is primary else _side(m, primary)
-        m["label"] = f"{name} · {m['width']}×{m['height']}"
-    # одинаковые подписи (два монитора справа) различаем номером Windows
+        number = m["device"].rsplit("DISPLAY", 1)[-1]
+        model = names.get(m["device"]) or f"Монитор {number}"
+        m["label"] = f"{model} · {m['width']}×{m['height']}"
+    # два одинаковых монитора — различаем номером Windows
     for m in mons:
         if sum(1 for o in mons if o["label"] == m["label"]) > 1:
             m["label"] += f" ({m['device'].rsplit('DISPLAY', 1)[-1]})"
+    for m in mons:
+        if m["primary"]:
+            m["label"] += " · основной"
     mons.sort(key=lambda m: (not m["primary"], m["x"], m["y"]))
     return mons
 
