@@ -60,6 +60,8 @@ DEFAULT_CONFIG = {
     # «Открывать на»: "auto" — на мониторе, где HUD закрыли, или имя монитора Windows
     # ("\\\\.\\DISPLAY5"); если его нет (выключен) — как "auto"
     "monitor": "auto",
+    # сам запускать HWiNFO и перезапускать после 12 часов (работает после «Настроить HWiNFO»)
+    "hwinfo_auto": True,
     "theme": "matrix",          # тема оформления (web/themes/)
     # настройки каждой темы отдельно: {"matrix": {"palette": "green", ...}}.
     # Значения по умолчанию и допустимые значения знает сама тема (web/themes/*.js)
@@ -84,7 +86,7 @@ def _settings_error(changes) -> str | None:
     if not isinstance(changes, dict):
         return "ожидался объект"
     for key, value in changes.items():
-        if key == "start_fullscreen":
+        if key in ("start_fullscreen", "hwinfo_auto"):
             if not isinstance(value, bool):
                 return key
         elif key == "monitor":
@@ -245,12 +247,28 @@ class Api:
             "poll_interval_ms": self._config.get("poll_interval_ms", 1000),
             "start_fullscreen": self._config["start_fullscreen"],
             "monitor": self._config["monitor"],
+            "hwinfo_auto": self._config["hwinfo_auto"],
             "monitors": [{"device": m["device"], "label": m["label"]} for m in labeled_monitors()],
             "theme": self._config["theme"],
             "themes": self._config["themes"],
             "fullscreen": self._fullscreen,
             "version": __version__,
         }
+
+    # ── «Настройки» → HWiNFO ──
+    def hwinfo_status(self) -> dict:
+        from .hwinfo_setup import status
+        return status()
+
+    def hwinfo_setup(self) -> dict:
+        """Закрыть HWiNFO, поставить галки, создать задание, запустить незаметно.
+        Windows один раз спросит разрешение (HWiNFO — в Program Files)."""
+        from .hwinfo_setup import setup
+        return setup()
+
+    def hwinfo_remove(self) -> dict:
+        from .hwinfo_setup import remove
+        return remove()
 
     def save_settings(self, changes: dict) -> dict:
         """Панель «Настройки»: применить и дописать в config.json, не трогая остальные ключи."""
@@ -291,7 +309,14 @@ def main() -> None:
     parser.add_argument("--demo", action="store_true", help="принудительно демо-данные")
     parser.add_argument("--fullscreen", action="store_true", help="полный экран")
     parser.add_argument("--list", action="store_true", help="показать сырые датчики и выйти")
+    # помощник с правами администратора: его запускает HUD (setup/remove) или задание (restart)
+    for action in ("setup", "restart", "remove"):
+        parser.add_argument(f"--hwinfo-{action}", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    for action in ("setup", "restart", "remove"):
+        if getattr(args, f"hwinfo_{action}"):
+            from .hwinfo_setup import elevated_main
+            sys.exit(elevated_main(action))
 
     config = load_config()
     if args.demo:

@@ -20,6 +20,7 @@ from collections import deque
 from .gpuinfo import dedicated_vram_gb
 from .normalize import Metric, normalize, collect_cores, core_groups, collect_dimms, collect_drives, collect_network
 from .diagnose import hwinfo_hint
+from .hwinfo_setup import AutoRecover
 from .parking import CoreParking
 from .sources.demo import DemoSource
 
@@ -69,6 +70,7 @@ class SourceManager:
         self._parking = CoreParking()
         self._preferred = config.get("source", "auto")
         self._next_retry = 0.0
+        self._recover = AutoRecover()
         self._select(self._preferred)
 
     def _candidates(self) -> list:
@@ -161,7 +163,12 @@ class SourceManager:
         12-часового лимита — тогда переключаемся сами, без перезапуска HUD.
         """
         if self.active_name != "demo" or self._preferred == "demo":
+            if self.active_name == "hwinfo":
+                self._recover.data_ok()
             return
+        # HWiNFO не запущен или 12 часов истекли — задание HUD (пере)запустит его само
+        if self._recover.tick(self.config.get("hwinfo_auto", True)):
+            self.warning = "HWiNFO перезапускается — данные вернутся через несколько секунд."
         now = time.monotonic()
         if now < self._next_retry:
             return

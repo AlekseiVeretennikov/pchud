@@ -18,7 +18,61 @@
     }
     items.push({ key: "start_fullscreen", type: "toggle", label: "Всегда открывать на весь экран",
       hint: "F11 переключает до закрытия HUD" });
-    return [{ title: "Окно", items }];
+    return [
+      { title: "Окно", items },
+      { title: "HWiNFO", items: [
+        { type: "custom", render: renderHwinfo },
+        { key: "hwinfo_auto", type: "toggle", label: "Запускать и перезапускать сам",
+          hint: "если HWiNFO не запущен или через 12 часов отключил общую память" },
+      ] },
+    ];
+  }
+
+  // ── HWiNFO: состояние и кнопка «Настроить» (backend/hwinfo_setup.py) ──
+  function renderHwinfo(row) {
+    const text = el("div", "settings__label");
+    const state = el("span", "settings__hint");
+    const actions = el("div", "settings__actions");
+    const setupBtn = el("button", "settings__btn", "Настроить HWiNFO");
+    const removeBtn = el("button", "settings__btn settings__btn--quiet", "Убрать задание");
+    setupBtn.type = removeBtn.type = "button";
+    text.append("Незаметный HWiNFO", state);
+    actions.append(setupBtn, removeBtn);
+    row.append(text, actions);
+
+    const api = () => window.pywebview && window.pywebview.api;
+    async function refresh() {
+      if (!api()) { state.textContent = "доступно только в программе"; setupBtn.disabled = removeBtn.disabled = true; return; }
+      let st;
+      try { st = await api().hwinfo_status(); } catch (e) { state.textContent = String(e); return; }
+      removeBtn.hidden = !st.task;
+      if (!st.installed) {
+        state.textContent = "HWiNFO не установлен — скачайте вариант Installer на hwinfo.com";
+        setupBtn.disabled = true;
+      } else if (st.configured) {
+        state.textContent = "настроен: запускается в трее, данные включены, после 12 часов перезапускается сам";
+        setupBtn.textContent = "Настроить заново";
+      } else if (st.task_moved) {
+        state.textContent = "PC HUD перенесли в другую папку — нажмите, чтобы обновить задание";
+      } else {
+        state.textContent = "HUD сам поставит галки в HWiNFO и будет запускать его незаметно. Windows один раз спросит разрешение";
+      }
+      row.dataset.configured = st.configured ? "1" : "";
+    }
+    async function act(btn, method, busy) {
+      const old = btn.textContent;
+      setupBtn.disabled = removeBtn.disabled = true;
+      btn.textContent = busy;
+      let res;
+      try { res = await api()[method](); } catch (e) { res = { ok: false, message: String(e) }; }
+      btn.textContent = old;
+      setupBtn.disabled = removeBtn.disabled = false;
+      await refresh();
+      setStatus(res.message, !res.ok);
+    }
+    setupBtn.addEventListener("click", () => act(setupBtn, "hwinfo_setup", "Подтвердите в окне Windows…"));
+    removeBtn.addEventListener("click", () => act(removeBtn, "hwinfo_remove", "Подтвердите…"));
+    refresh();
   }
   let monitors = [];
 
@@ -102,6 +156,7 @@
     const values = () => store(scope);
     const row = el("div", `settings__row settings__row--${item.type}`);
     row.dataset.scope = scope;
+    if (item.type === "custom") { item.render(row); return row; }
     if (item.needs) row.dataset.needs = item.needs;
     if (item.needsAny) row.dataset.needsAny = item.needsAny.join(" ");
     if (item.label) {
@@ -212,7 +267,7 @@
       monitors = Array.isArray(cfg.monitors) ? cfg.monitors : [];
       // выбранный монитор сейчас не подключён — показываем «где закрыли», но не перезаписываем
       const mon = monitors.some((m) => m.device === cfg.monitor) ? cfg.monitor : "auto";
-      general = { start_fullscreen: !!cfg.start_fullscreen, monitor: mon };
+      general = { start_fullscreen: !!cfg.start_fullscreen, monitor: mon, hwinfo_auto: cfg.hwinfo_auto !== false };
       buildPanel();
       apply();
       const btn = document.getElementById("settings-btn");

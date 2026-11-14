@@ -122,6 +122,10 @@ def launch(app: str) -> dict:
     title = APPS[app]["title"]
     if running(app):
         return {"status": "running", "message": f"{title} уже работает"}
+    if app == "hwinfo":
+        from .hwinfo_setup import run_task, task_command
+        if task_command() is not None and run_task():
+            return {"status": "started", "message": "HWiNFO запускается (в трее)"}
     exe = find_exe(app)
     if exe is None:
         webbrowser.open(APPS[app]["download"])
