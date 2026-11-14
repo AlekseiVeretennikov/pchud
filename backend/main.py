@@ -227,6 +227,13 @@ class Api:
         except (OSError, ValueError):
             pass
 
+    def quit(self) -> None:
+        """Кнопка «Выйти» — на весь экран крестика нет. Монитор запоминаем, как при закрытии."""
+        self.window_closing()
+        if self._window is not None:
+            # из потока JS-моста: закрываем чуть позже, чтобы вызов успел вернуться
+            threading.Timer(0.05, self._window.destroy).start()
+
     def get_snapshot(self) -> dict:
         with self._lock:
             return self._manager.snapshot()

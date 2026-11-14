@@ -962,6 +962,31 @@ function setupAppButtons() {
   });
 }
 
+/* ── кнопка «Выйти»: на весь экран крестика нет. Первое нажатие спрашивает,
+   второе в течение 3 с закрывает — чтобы не выйти случайным щелчком ── */
+function setupQuitButton() {
+  const btn = document.getElementById("quit-btn");
+  if (!btn || btn.dataset.ready) return;
+  btn.dataset.ready = "1";
+  let armed = 0;
+  btn.addEventListener("click", () => {
+    if (!window.pywebview) return;
+    if (armed) {
+      clearTimeout(armed);
+      btn.textContent = "Выход…";
+      window.pywebview.api.quit();
+      return;
+    }
+    btn.textContent = "Точно выйти?";
+    btn.dataset.state = "armed";
+    armed = setTimeout(() => {
+      armed = 0;
+      btn.textContent = "Выйти";
+      delete btn.dataset.state;
+    }, 3000);
+  });
+}
+
 /* ── кнопка «Отчёт»: скриншот + датчики в .zip на рабочем столе ── */
 function setupReportButton() {
   const btn = document.getElementById("report-btn");
@@ -988,15 +1013,18 @@ function setupReportButton() {
 window.addEventListener("pywebviewready", () => {
   setupReportButton();
   setupAppButtons();
+  setupQuitButton();
   startEffects();
   pollLoop(1000);
 });
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     if (!window.pywebview) {
-      // открыто в браузере: сохранять отчёт некому
-      const btn = document.getElementById("report-btn");
-      if (btn) btn.hidden = true;
+      // открыто в браузере: сохранять отчёт и закрывать программу некому
+      for (const id of ["report-btn", "quit-btn"]) {
+        const btn = document.getElementById(id);
+        if (btn) btn.hidden = true;
+      }
       startEffects();
       pollLoop(1000);
     }
