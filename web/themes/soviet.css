@@ -1,7 +1,11 @@
 /* Тема «Приборная панель» (themes/soviet.js). Всё — под html[data-theme="soviet"].
  * Шрифт osifont — чертёжный, по ISO 3098 (как ГОСТ 2.304 на приборах и чертежах);
  * web/fonts/, лицензия LGPL 3 с исключением для шрифтов — там же, README.txt. */
-@font-face { font-family: "osifont"; src: url("../fonts/osifont-lgpl3fe.ttf") format("truetype"); }
+/* у osifont над заглавными почти нет места (ascender 1542 при высоте букв 1510 из 2048),
+   поэтому текст прилипал к верху плашек и кнопок; поровну по 525 над и под буквами —
+   заглавные встают посередине строки */
+@font-face { font-family: "osifont"; src: url("../fonts/osifont-lgpl3fe.ttf") format("truetype");
+  ascent-override: 99.4%; descent-override: 25.6%; line-gap-override: 0%; }
 
 html[data-theme="soviet"] {
   /* эмаль: серо-зелёная «молотковая» краска приборных шкафов */
