@@ -1,0 +1,116 @@
+/* Тема «Windows 11» (themes/windows.js). Всё — под html[data-theme="windows"],
+   «Матрицу» эти правила не трогают. Ориентир — Диспетчер задач Windows 11. */
+
+html[data-theme="windows"] {
+  --sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  /* цифры — тем же системным шрифтом, моноширинность даёт tabular-nums */
+  --mono: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+/* тёмный режим (Mica dark) */
+html[data-theme="windows"][data-wmode="dark"] {
+  --bg: #202020; --panel: #2b2b2b; --panel-2: #282828; --line: #383838;
+  --ink: #ffffff; --ink-dim: #b3b3b3; --track: #3c3c3c;
+  --amber: #fce100; --red: #ff99a4; --toast-bg: #433519;
+  --bg-rgb: 32, 32, 32; --panel-rgb: 43, 43, 43; --panel2-rgb: 40, 40, 40;
+  --ink-rgb: 255, 255, 255; --dim-rgb: 179, 179, 179;
+}
+/* светлый режим (Mica light) */
+html[data-theme="windows"][data-wmode="light"] {
+  --bg: #f3f3f3; --panel: #ffffff; --panel-2: #fbfbfb; --line: #e2e2e2;
+  --ink: #1b1b1b; --ink-dim: #5f5f5f; --track: #e3e3e3;
+  --amber: #9d5d00; --red: #c42b1c; --toast-bg: #fff4ce;
+  --bg-rgb: 243, 243, 243; --panel-rgb: 255, 255, 255; --panel2-rgb: 251, 251, 251;
+  --ink-rgb: 27, 27, 27; --dim-rgb: 95, 95, 95;
+}
+
+html[data-theme="windows"] body { font-family: var(--sans); }
+html[data-theme="windows"] * { font-variant-numeric: tabular-nums; }
+
+/* карточки: сплошная заливка, скругление 8 px, тонкая рамка, без цветных уголков */
+html[data-theme="windows"] .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+html[data-theme="windows"][data-wmode="light"] .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+html[data-theme="windows"] .card::before { display: none; }
+
+/* заголовки — как в Windows: без разрядки и капса, полужирные */
+html[data-theme="windows"] .card__kind,
+html[data-theme="windows"] .mem-block__title,
+html[data-theme="windows"] .settings__title,
+html[data-theme="windows"] .settings__section-title {
+  letter-spacing: 0; text-transform: none; font-weight: 600;
+}
+html[data-theme="windows"] .card__kind { font-size: 16px; color: var(--ink); }
+html[data-theme="windows"] .card__name { color: var(--ink-dim); }
+html[data-theme="windows"] .mem-block__title { font-size: 14px; color: var(--ink); }
+html[data-theme="windows"] .settings__title { color: var(--ink); font-size: 16px; }
+html[data-theme="windows"] .settings__section-title { font-size: 13px; color: var(--ink); }
+html[data-theme="windows"] .stat dt,
+html[data-theme="windows"] .mb-tile__title,
+html[data-theme="windows"] .core-chip__num { letter-spacing: 0; }
+html[data-theme="windows"] .mb-tile__title { font-size: 12px; }
+
+/* плитки ядер, материнской платы и памяти — мягкие подложки вместо рамок */
+html[data-theme="windows"] .mb-tile,
+html[data-theme="windows"] .core-chip {
+  background: rgba(var(--ink-rgb), 0.035);
+  border-color: transparent;
+  border-radius: 6px;
+}
+
+/* метки 3D V-Cache / NVMe — плоские, цвета акцента */
+html[data-theme="windows"] .ccd-label__tag,
+html[data-theme="windows"] .drive__kind { letter-spacing: 0; border-radius: 4px; }
+
+/* шкалы и полосы — тоньше и спокойнее */
+html[data-theme="windows"] .bar { border-radius: 3px; }
+html[data-theme="windows"] .bar span { border-radius: 3px; }
+
+/* подвал: кнопки как у Windows — подложка, без рамки до наведения */
+html[data-theme="windows"] .hud__foot { font-family: var(--sans); }
+html[data-theme="windows"] .report-btn,
+html[data-theme="windows"] .foot-app {
+  border-radius: 4px; font-family: var(--sans);
+}
+html[data-theme="windows"] .report-btn {
+  background: rgba(var(--ink-rgb), 0.06); border-color: rgba(var(--ink-rgb), 0.08);
+}
+html[data-theme="windows"] .report-btn:hover { background: rgba(var(--ink-rgb), 0.1); }
+
+/* панели «Настройки» и «Темы» — как всплывающие окна Windows 11 */
+html[data-theme="windows"] .settings,
+html[data-theme="windows"] .gallery__box {
+  background: var(--panel); border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+}
+html[data-theme="windows"] .settings__choice button[aria-pressed="true"] {
+  background: rgba(var(--accent-rgb), 0.2); color: var(--ink);
+}
+
+/* в этой теме нет заставки и эффектов «Матрицы» */
+html[data-theme="windows"] .hud-bg { display: none; }
+html[data-theme="windows"] .gallery__title {
+  letter-spacing: 0; text-transform: none; font-family: var(--sans); font-weight: 600; color: var(--ink);
+}
+html[data-theme="windows"] .gallery__card { border-radius: 8px; }
+
+/* Segoe UI выше моноширинного шрифта «Матрицы»: без этого плитки ядер и платы
+   вырастают на 5 px и блок «Материнская плата» вылезает за низ карточки CPU */
+html[data-theme="windows"] .core-chip,
+html[data-theme="windows"] .mb-tile { line-height: 1.12; }
+
+/* VRAM и RAM — на такой же мягкой подложке, как остальные блоки */
+html[data-theme="windows"] .mem-block {
+  background: rgba(var(--ink-rgb), 0.035);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+html[data-theme="windows"] .mem-block__divider { display: none; }
+
+/* высоты строк — как в «Матрице»: иначе подписи групп (CCD1, CCD2, MB) и заголовок
+   карточки выше на 2–3 px, колонка CPU удлиняется на 10 px, и блок «Материнская плата»
+   встаёт ниже блока «Термики и охлаждение» у GPU */
+html[data-theme="windows"] .ccd-label { height: 15px; line-height: 15px; }
+html[data-theme="windows"] .card__head { line-height: 19px; }

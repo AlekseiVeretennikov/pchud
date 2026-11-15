@@ -262,6 +262,11 @@ class Api:
             "version": __version__,
         }
 
+    def get_system_theme(self) -> dict:
+        """Тема «Windows 11»: тёмный/светлый режим и цвет акцента из «Персонализации»."""
+        from .system_theme import system_theme
+        return system_theme()
+
     # ── «Настройки» → HWiNFO ──
     def hwinfo_status(self) -> dict:
         from .hwinfo_setup import status
