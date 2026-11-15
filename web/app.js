@@ -751,6 +751,13 @@ function updateClock() {
   setText("clock", `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
 }
 
+/* тема со своими приборами (например, «Приборная панель») получает тот же снимок */
+let activeTheme = null;
+function themeRender(snap) {
+  if (!activeTheme || !activeTheme.render) return;
+  try { activeTheme.render(snap); } catch (e) { console.error("theme render error", e); }
+}
+
 /* ── опрос данных ────────────────────────────────────── */
 async function pollLoop(intervalMs) {
   const tick = async () => {
@@ -758,10 +765,12 @@ async function pollLoop(intervalMs) {
       if (window.pywebview && window.pywebview.api) {
         const snap = await window.pywebview.api.get_snapshot();
         render(snap);
+        themeRender(snap);
         window.HudBoot.feed(snap);   // заставке нужен первый снимок
       } else {
         const snap = demoSnapshot();
         render(snap);
+        themeRender(snap);
         window.HudBoot.feed(snap);
       }
     } catch (e) {
@@ -904,7 +913,10 @@ async function startEffects() {
   // значения по умолчанию: без pywebview (страница открыта в браузере)
   let config = { theme: "matrix", themes: {}, start_fullscreen: false, fullscreen: false, version: "" };
   if (window.pywebview) Object.assign(config, await window.pywebview.api.get_config());
+  // в браузере тему можно выбрать адресом: index.html?theme=soviet (для превью и проверки)
+  else config.theme = new URLSearchParams(location.search).get("theme") || "matrix";
   const theme = window.HudThemes.get(config.theme);
+  activeTheme = theme;
   const settings = window.HudThemes.settingsFor(theme, (config.themes || {})[theme.id]);
   document.documentElement.dataset.theme = theme.id;
   theme.start(settings, { version: config.version });
