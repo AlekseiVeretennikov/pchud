@@ -31,6 +31,14 @@
   const screws = '<i class="sv-screw sv-screw--tl"></i><i class="sv-screw sv-screw--tr"></i>' +
                  '<i class="sv-screw sv-screw--bl"></i><i class="sv-screw sv-screw--br"></i>';
   function setText(el, text) { if (el && el.textContent !== text) el.textContent = text; }
+  // число с плавным счётом (countText из app.js); null — прочерк
+  function count(el, v) {
+    if (!el) return;
+    const text = v == null ? "--" : String(v);
+    if (typeof window.countText === "function") window.countText(el, text);
+    else setText(el, text);
+  }
+  const setVal = (id, v) => count($(`[data-val="${id}"]`), v);
 
   /* ── анимация: один цикл на все стрелки и барабаны, спит, когда всё стоит ── */
   const movers = new Set();
@@ -94,7 +102,7 @@
     cells.forEach(place);
     const d = { el, t0: 0 };
     d.step = (dt, now) => {
-      const t = Math.min(1, (now - d.t0) / 650), e = 1 - Math.pow(1 - t, 3);
+      const t = Math.min(1, (now - d.t0) / 900), e = 1 - (1 - t) * (1 - t);
       for (const c of cells) { c.p = c.from + (c.to - c.from) * e; place(c); }
       return t < 1;
     };
@@ -125,7 +133,7 @@
   }
 
   /* ── круглый прибор 270° со счётчиком в окошке (как одометр в спидометре) ── */
-  function roundGauge(host, { size = 196, min = 20, max = 100, step = 10, minor = 2, red = 90, unit = "°C" }) {
+  function roundGauge(host, { size = 212, min = 20, max = 100, step = 10, minor = 2, red = 90, unit = "°C" }) {
     const c = size / 2, R = c - 6, A0 = -135, A1 = 135;
     const ang = (v) => A0 + ((Math.max(min - 3, Math.min(max + 3, v ?? min)) - min) / (max - min)) * (A1 - A0);
     let s = `<svg class="sv-round" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
@@ -142,22 +150,21 @@
     }
     s += `<path d="${arc(c, c, R - 6, A0, A1)}" class="sv-tick" stroke-width="1.2" fill="none"/>
       <text x="${c}" y="${c + R * 0.36}" class="sv-num" font-size="${(size * 0.1).toFixed(1)}">${unit}</text>
-      <foreignObject x="${c - 40}" y="${c + R * 0.43}" width="80" height="34"><div xmlns="http://www.w3.org/1999/xhtml" class="sv-round__win"></div></foreignObject>
+      <text x="${c}" y="${c + R * 0.66}" class="sv-num sv-gval" font-size="${(size * 0.135).toFixed(1)}">--</text>
       <g class="sv-needle"><line x1="${c}" y1="${c + R * 0.2}" x2="${c}" y2="${c - R + 8}" class="sv-needle__body" stroke-width="3.2"/>
         <line x1="${c}" y1="${c - R * 0.55}" x2="${c}" y2="${c - R + 8}" class="sv-needle__tip" stroke-width="3.2"/></g>
       <circle cx="${c}" cy="${c}" r="${size * 0.06}" fill="#1c1b19"/><circle cx="${c}" cy="${c}" r="${size * 0.025}" fill="#77756e"/>
       <circle cx="${c}" cy="${c}" r="${R + 4}" class="sv-glass"/></svg>`;
     host.innerHTML = `<div class="sv-bezel">${s}</div>`;
-    const dr = drum(3, 0, "sv-drum--red");
-    host.querySelector(".sv-round__win").append(dr.el);
+    const val = host.querySelector(".sv-gval");
     const n = needle(host.querySelector(".sv-needle"), c, c, ang);
-    return { set(v) { n.set(v); dr.set(v == null ? null : Math.round(v)); } };
+    return { set(v) { n.set(v); count(val, v == null ? null : Math.round(v)); } };
   }
 
   /* ── щитовой прибор: прямоугольный, дуга ±37°, зеркальная полоска, класс точности ── */
   const NICE = [100, 150, 200, 300, 400, 500, 600, 800, 1000];
   function stepFor(max) { return max <= 100 ? 20 : max <= 200 ? 50 : max <= 600 ? 100 : 200; }
-  function panelMeter(host, { w = 176, h = 132, max = 100, unit = "%", red = null, grow = false }) {
+  function panelMeter(host, { w = 186, h = 140, max = 100, unit = "%", red = null, grow = false }) {
     const cx = w / 2, cy = h + 30, R = h + 6, A = 37;
     const m = { max, needle: null, value: null };
     function build() {
@@ -200,8 +207,11 @@
     return m;
   }
 
-  /* ── самописец: бумага в сетку, чернильная линия, перо у правого края ── */
-  function drawRecorder(canvas, hist, { len, lo, hi, minSpan = 10, smooth = 0, pad = 0.12 }) {
+  /* ── самописец: бумага в сетку, чернильная линия, перо у правого края ──
+     f — доля секунды с последнего снимка (0…1): лента сдвигается плавно, а не рывком
+     раз в секунду. Новая точка появляется под кареткой и выезжает из-под неё,
+     перо стоит ровно на краю бумаги между двумя последними значениями. */
+  function drawRecorder(canvas, hist, { len, lo, hi, minSpan = 10, smooth = 0, pad = 0.12 }, f = 0) {
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
     if (!W || !H) return;
@@ -220,35 +230,41 @@
     const filled = (hist || []).length;
     const n = Math.max(2, Math.min(len, Math.max(60, filled)));
     const plotW = W - PEN, step = plotW / (n - 1);
+    const X = (i) => (i + 1 - f) * step;              // i — номер точки в окне из n
     // вертикальная сетка привязана ко времени — бумага «едет» вместе с записью
     const minorEvery = Math.max(1, Math.round(n / 30)), majorEvery = minorEvery * 5;
-    for (let i = 0; i < n; i++) {
+    const ink = dim ? "120,40,20" : "196,92,60";
+    ctx.lineWidth = 1;
+    for (let i = -1; i <= n; i++) {
       const g = tick - (n - 1 - i);
-      if (g % minorEvery) continue;
-      const major = g % majorEvery === 0;
-      ctx.strokeStyle = major ? (dim ? "rgba(120,40,20,0.45)" : "rgba(196,92,60,0.45)") : (dim ? "rgba(120,40,20,0.22)" : "rgba(196,92,60,0.2)");
-      ctx.lineWidth = 1;
-      const x = Math.round(i * step) + 0.5;
+      if (((g % minorEvery) + minorEvery) % minorEvery) continue;
+      const x = X(i);
+      if (x < 0 || x > plotW) continue;
+      ctx.strokeStyle = `rgba(${ink},${g % majorEvery === 0 ? 0.45 : 0.2})`;
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
     }
-    ctx.strokeStyle = dim ? "rgba(120,40,20,0.22)" : "rgba(196,92,60,0.2)";
+    ctx.strokeStyle = `rgba(${ink},0.2)`;
     for (let k = 1; k < 6; k++) {
       const y = Math.round((H * k) / 6) + 0.5;
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
     }
 
-    let data = (hist || []).slice(-n).filter((v) => v != null && !Number.isNaN(v));
+    let data = (hist || []).slice(-n).map((v) => (v == null || Number.isNaN(v) ? null : v));
+    const known = data.filter((v) => v != null);
     if (smooth && data.length > 2) {
-      data = data.map((_, i) => {
-        let s = 0, c = 0;
-        for (let j = Math.max(0, i - smooth); j <= Math.min(data.length - 1, i + smooth); j++) { s += data[j]; c++; }
-        return s / c;
+      data = data.map((v, i) => {
+        if (v == null) return null;
+        let sum = 0, c = 0;
+        for (let j = Math.max(0, i - smooth); j <= Math.min(data.length - 1, i + smooth); j++) {
+          if (data[j] != null) { sum += data[j]; c++; }
+        }
+        return sum / c;
       });
     }
     // шкала: заданная или по данным, но не уже minSpan — иначе дрожь в 1 °C на всю высоту
     let a = lo, b = hi;
-    if (data.length && (a == null || b == null)) {
-      const mn = Math.min(...data), mx = Math.max(...data);
+    if (known.length && (a == null || b == null)) {
+      const mn = Math.min(...known), mx = Math.max(...known);
       const mid = (mn + mx) / 2, span = Math.max(minSpan, (mx - mn) * (1 + pad * 2));
       if (a == null) a = mid - span / 2;
       if (b == null) b = a + span;
@@ -257,20 +273,31 @@
     if (b == null || b <= a) b = a + minSpan;
     const Y = (v) => H - 4 - ((Math.max(a, Math.min(b, v)) - a) / (b - a)) * (H - 8);
 
-    if (data.length > 1) {
-      const off = n - data.length;
+    // кривая: через середины отрезков, сами точки — опорные (ломаная без углов)
+    const off = n - data.length;
+    const pts = [];
+    data.forEach((v, i) => { if (v != null) pts.push([X(off + i), Y(v)]); });
+    if (pts.length > 1) {
       ctx.beginPath();
-      data.forEach((v, i) => { const x = (off + i) * step, y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length - 1; i++) {
+        ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+      }
+      ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
       ctx.strokeStyle = INKS[opts.ink] || INKS.violet;
       ctx.globalAlpha = dim ? 0.8 : 0.9;
       ctx.lineWidth = 1.7; ctx.lineJoin = "round"; ctx.lineCap = "round";
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // каретка и перо
+    // каретка и перо: перо — на краю бумаги, между двумя последними значениями
     ctx.fillStyle = "#151513";
     ctx.fillRect(plotW, 0, PEN, H);
-    const py = data.length ? Y(data[data.length - 1]) : H - 4;
+    let py = H - 4;
+    if (pts.length > 1) {
+      const p = pts[pts.length - 2], q = pts[pts.length - 1];
+      py = q[0] === p[0] ? q[1] : p[1] + (q[1] - p[1]) * Math.max(0, Math.min(1, (plotW - p[0]) / (q[0] - p[0])));
+    } else if (pts.length) py = pts[0][1];
     ctx.fillStyle = "#c9c4b4";
     ctx.beginPath(); ctx.moveTo(plotW - 2, py); ctx.lineTo(W, py - 5); ctx.lineTo(W, py + 5); ctx.closePath(); ctx.fill();
     // блик стекла
@@ -279,17 +306,45 @@
     ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
   }
 
+  /* Самописцы с окном в минуту (сеть, кадры) перерисовываются каждый кадр — лента
+     едет плавно. У 10-минутных шаг меньше пикселя, им хватает перерисовки раз в секунду. */
+  const recs = new Map();
+  let lastSnap = performance.now();
+  const recMover = {
+    step(dt, now) {
+      const f = Math.min(1, (now - lastSnap) / 1000);
+      for (const [canvas, r] of recs) if (r.live) drawRecorder(canvas, r.hist, r.cfg, f);
+      return [...recs.values()].some((r) => r.live) && !document.hidden;
+    },
+  };
+  function record(canvas, hist, cfg) {
+    if (!canvas) return;
+    const live = cfg.len <= 120;
+    recs.set(canvas, { hist, cfg, live });
+    drawRecorder(canvas, hist, cfg, live ? Math.min(1, (performance.now() - lastSnap) / 1000) : 0);
+    if (live) wake(recMover);
+  }
+
+  /* ── сигнальная лампочка: хромированный ободок, гранёная линза своего цвета
+     (видна и погашенной), подпись рядом ── */
+  const lampHtml = (id, color, label, title) =>
+    `<span class="sv-lampbox" title="${title}"><i class="sv-lamp sv-lamp--${color}" data-lamp="${id}"><b></b></i><span class="sv-lampbox__t">${label}</span></span>`;
+  const lampPair = (id, what) =>
+    `<span class="sv-lamps">${lampHtml(`${id}-warn`, "amber", "Внимание", `${what}: тепло`)}${lampHtml(`${id}-crit`, "red", "Перегрев", `${what}: перегрев`)}</span>`;
+
   /* ── разметка ──────────────────────────────────────────── */
-  function recHtml(id, title, unit, digits, frac = 0) {
+  function recHtml(id, title, unit, digits, withDrum = false) {
+    const value = withDrum
+      ? `<span class="sv-slot" data-drum="${id}" data-digits="${digits}"></span>`
+      : `<span class="sv-val sv-val--rec" data-val="${id}">--</span>`;
     return `<div class="sv-rec" data-rec="${id}">
-      <div class="sv-rec__head"><span class="sv-rec__t">${title}</span><span class="sv-lamp sv-lamp--small" data-lamp="${id}" hidden></span>
-        <span class="sv-slot" data-drum="${id}" data-digits="${digits}" data-frac="${frac}"></span><span class="sv-unit">${unit}</span></div>
+      <div class="sv-rec__head"><span class="sv-rec__t">${title}</span>${value}<span class="sv-unit">${unit}</span></div>
       <div class="sv-rec__win"><canvas></canvas></div>
       <div class="sv-rec__sub" data-sub="${id}">&nbsp;</div></div>`;
   }
-  function readout(id, label, unit, digits, frac = 0) {
+  function readout(id, label, unit) {
     return `<div class="sv-readout"><span class="sv-cap">${label}</span>
-      <div><span class="sv-slot" data-drum="${id}" data-digits="${digits}" data-frac="${frac}"></span><span class="sv-unit sv-unit--lg">${unit}</span></div></div>`;
+      <div><span class="sv-val sv-val--lg" data-val="${id}">--</span><span class="sv-unit sv-unit--lg">${unit}</span></div></div>`;
   }
   function meterRow(p) {
     return `<div class="sv-meters">
@@ -297,16 +352,16 @@
       <div class="sv-mcol"><div data-gauge="${p}_load"></div><span class="sv-cap">Нагрузка</span></div>
       <div class="sv-mcol"><div data-gauge="${p}_power"></div><span class="sv-cap">Мощность</span></div>
       <div class="sv-readouts">${p === "cpu"
-        ? readout("cpu_clock", "Частота", "МГц", 4) + readout("vcore", "Напряжение", "В", 1, 2)
-        : readout("gpu_clock", "Частота", "МГц", 4) + readout("vram_clock", "Частота памяти", "МГц", 5)}</div>
+        ? readout("cpu_clock", "Частота", "МГц") + readout("vcore", "Напряжение", "В")
+        : readout("gpu_clock", "Частота", "МГц") + readout("vram_clock", "Частота памяти", "МГц")}</div>
     </div>`;
   }
   function memHtml(id, plate) {
     return `<div class="sv-mem">
       <div class="sv-mem__row"><span class="sv-plate sv-plate--sm">${plate}</span>
-        <span class="sv-slot" data-drum="${id}_pct" data-digits="3"></span><span class="sv-unit">%</span>
+        <span class="sv-val" data-val="${id}_pct">--</span><span class="sv-unit">%</span>
         <span class="sv-mem__extra" data-sub="${id}_extra"></span></div>
-      <div class="sv-hbar" data-hbar="${id}"><u></u></div>
+      <div class="sv-hbar" data-hbar="${id}"><b></b><u></u></div>
       <div class="sv-mem__sub" data-sub="${id}">&nbsp;</div></div>`;
   }
 
@@ -319,32 +374,34 @@
       <stop offset="0" stop-color="#fff" stop-opacity="0.32"/><stop offset="0.45" stop-color="#fff" stop-opacity="0.04"/>
       <stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs></svg>
     <section class="sv-card sv-card--cpu">${screws}
-      <div class="sv-head"><span class="sv-plate">ЦП</span><span class="sv-name" data-name="cpu">—</span><span class="sv-lamp" data-lamp="cpu" title="Перегрев ЦП"></span></div>
+      <div class="sv-head"><span class="sv-plate">ЦП</span><span class="sv-name" data-name="cpu">—</span>${lampPair("cpu", "ЦП")}</div>
       ${meterRow("cpu")}
       <div class="sv-cores" data-cores></div>
-      <div class="sv-sect"><b>МП</b> материнская плата</div>
+      <div class="sv-sect sv-sect--foot"><b>МП</b> материнская плата</div>
       <div class="sv-recs">${recHtml("vrm", "VRM · MOS", "°C", 3)}${recHtml("chipset", "Чипсет", "°C", 3)}${recHtml("sys", "Система", "°C", 3)}</div>
     </section>
     <section class="sv-card sv-card--gpu">${screws}
-      <div class="sv-head"><span class="sv-plate">ГП</span><span class="sv-name" data-name="gpu">—</span><span class="sv-lamp" data-lamp="gpu" title="Перегрев ГП"></span></div>
+      <div class="sv-head"><span class="sv-plate">ГП</span><span class="sv-name" data-name="gpu">—</span>${lampPair("gpu", "ГП")}</div>
       ${meterRow("gpu")}
-      <div class="sv-sect"><b>ОЗУ</b> память</div>
-      <div class="sv-mems">${memHtml("vram", "Видео")}${memHtml("ram", "ОЗУ")}</div>
-      <div class="sv-dimms" data-dimms></div>
-      <div class="sv-sect"><b>ГП</b> термики и охлаждение</div>
+      <div class="sv-memblock">
+        <div class="sv-sect"><b>ОЗУ</b> память</div>
+        <div class="sv-mems">${memHtml("vram", "Видео")}${memHtml("ram", "ОЗУ")}</div>
+        <div class="sv-dimms" data-dimms></div>
+      </div>
+      <div class="sv-sect sv-sect--foot"><b>ГП</b> термики и охлаждение</div>
       <div class="sv-recs">${recHtml("hotspot", "Горячая точка", "°C", 3)}${recHtml("fan", "Вентиляторы", "об/мин", 4)}${recHtml("bus", "Шина PCIe", "%", 3)}</div>
     </section>
     <div class="sv-mini">
       <section class="sv-card sv-card--drives">${screws}
-        <div class="sv-head"><span class="sv-plate">Накопители</span><span class="sv-lamp" data-lamp="drives" title="Перегрев накопителя"></span></div>
+        <div class="sv-head"><span class="sv-plate">Накопители</span>${lampPair("drives", "Накопитель")}</div>
         <div class="sv-drives" data-drives></div>
       </section>
       <section class="sv-card sv-card--net">${screws}
         <div class="sv-head"><span class="sv-plate">Сеть</span><span class="sv-name" data-name="net">—</span></div>
-        <div class="sv-recs sv-recs--2">${recHtml("dl", "▼ Приём", "Мбит/с", 4)}${recHtml("up", "▲ Передача", "Мбит/с", 4)}</div>
+        <div class="sv-recs sv-recs--2">${recHtml("dl", "▼ Приём", "Мбит/с", 4, true)}${recHtml("up", "▲ Передача", "Мбит/с", 4, true)}</div>
       </section>
       <section class="sv-card sv-card--fps">${screws}
-        <div class="sv-head"><span class="sv-plate">Кадры</span><span class="sv-name" data-name="fps">—</span><span class="sv-lamp sv-lamp--green" data-lamp="fps" title="Игра идёт"></span></div>
+        <div class="sv-head"><span class="sv-plate">Кадры</span><span class="sv-name" data-name="fps">—</span><span class="sv-lamps">${lampHtml("fps", "green", "Игра", "Игра идёт: RTSS отдаёт кадры")}</span></div>
         <div class="sv-fps">
           <div class="sv-readout"><span class="sv-cap">кадр/с</span><span class="sv-slot sv-slot--xl" data-drum="fps" data-digits="3"></span></div>
           <div class="sv-fps__info">
@@ -418,15 +475,9 @@
     if (host.dataset.slots !== slots) {
       host.dataset.slots = slots;
       host.innerHTML = dimms.length ? `<span class="sv-cap">Планки</span>` + dimms.map((d) =>
-        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span><span class="sv-slot" data-dimm="${d.slot}"></span><span class="sv-unit">°C</span></span>`).join("") : "";
-      S.dimm = {};
-      host.querySelectorAll("[data-dimm]").forEach((slot) => {
-        const d = drum(2, 0, "sv-drum--sm");
-        slot.append(d.el);
-        S.dimm[slot.dataset.dimm] = d;
-      });
+        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span><span class="sv-val" data-val="dimm${d.slot}">--</span><span class="sv-unit">°C</span></span>`).join("") : "";
     }
-    dimms.forEach((d) => S.dimm[d.slot] && S.dimm[d.slot].set(d.temp != null ? Math.round(d.temp) : null));
+    dimms.forEach((d) => setVal(`dimm${d.slot}`, d.temp != null ? Math.round(d.temp) : null));
   }
 
   function renderDrives(drives) {
@@ -437,46 +488,54 @@
       host.dataset.layout = layout;
       host.innerHTML = list.length ? list.map((d) => `<div class="sv-drive" data-letter="${d.letter}">
           <span class="sv-drive__l">${d.letter}</span><span class="sv-drive__k">${d.kind === "HDD" ? "ЖМД" : d.kind === "NVMe" ? "NVMe" : "ТТН"}</span>
-          <div class="sv-hbar"><u></u></div><span class="sv-drive__s"></span></div>`).join("") +
-        `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чт / Зп</span><span></span>
-          <div><span class="sv-slot" data-rw="r"></span><span class="sv-cap"> / </span><span class="sv-slot" data-rw="w"></span><span class="sv-unit">МБ/с</span></div><span></span></div>`
+          <div class="sv-hbar"><b></b><u></u></div><span class="sv-drive__p"></span><span class="sv-drive__s"></span></div>`).join("") +
+        `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чтение</span><span class="sv-val" data-val="rw_r">--</span>
+          <span class="sv-cap">Запись</span><span class="sv-val" data-val="rw_w">--</span><span class="sv-unit">МБ/с</span></div>`
         : '<div class="sv-cap">нет данных</div>';
       host.classList.toggle("sv-drives--dense", list.length > 3);
-      S.rw = {};
-      host.querySelectorAll("[data-rw]").forEach((slot) => { const d = drum(4); slot.append(d.el); S.rw[slot.dataset.rw] = d; });
     }
     let hot = 0, r = 0, w = 0;
     for (const d of list) {
       const row = host.querySelector(`[data-letter="${d.letter}"]`);
       if (!row) continue;
       const p = d.used_pct != null ? Math.max(0, Math.min(100, d.used_pct)) : null;
-      row.querySelector("u").style.left = `calc(${p ?? 0}% - 1.5px)`;
+      fill(row.querySelector(".sv-hbar"), p);
+      setText(row.querySelector(".sv-drive__p"), p != null ? `${Math.round(p)} %` : "");
       const t = d.temp != null ? Math.round(d.temp) : null;
       const [amber, red] = d.kind === "HDD" ? [45, 55] : [60, 75];
       if (t != null) hot = Math.max(hot, t >= red ? 2 : t >= amber ? 1 : 0);
-      const size = d.total_gb ? `${gb(d.used_gb)} / ${gb(d.total_gb)}` : (p != null ? `${Math.round(p)} %` : "");
+      const size = d.total_gb ? `${gb(d.used_gb)} / ${gb(d.total_gb)}` : "";
       setText(row.querySelector(".sv-drive__s"), `${size}${t != null ? ` · ${t}°` : ""}`);
       r += d.read_mbs || 0; w += d.write_mbs || 0;
     }
-    if (S.rw.r) { S.rw.r.set(list.length ? Math.round(r) : null); S.rw.w.set(list.length ? Math.round(w) : null); }
+    setVal("rw_r", list.length ? Math.round(r) : null);
+    setVal("rw_w", list.length ? Math.round(w) : null);
     lamp("drives", hot);
   }
 
-  /* лампочка: 0 — погашена, 1 — жёлтая, 2 — красная мигающая */
+  /* пара лампочек: level 0 — обе погашены, 1 — горит жёлтая «Внимание»,
+     2 — горит и жёлтая, и мигает красная «Перегрев» */
   function lamp(id, level) {
-    const el = $(`[data-lamp="${id}"]`);
-    if (!el) return;
     const lv = opts.lamps ? level : 0;
-    el.dataset.level = String(lv);
-    if (el.classList.contains("sv-lamp--small")) el.hidden = lv === 0;
+    const warn = $(`[data-lamp="${id}-warn"]`), crit = $(`[data-lamp="${id}-crit"]`);
+    if (warn) warn.dataset.on = lv >= 1 ? "1" : "0";
+    if (crit) crit.dataset.on = lv >= 2 ? "2" : "0";
+  }
+  // лента ленточного указателя: залита до отметки
+  function fill(bar, pct) {
+    if (!bar) return;
+    const p = Math.max(0, Math.min(100, pct ?? 0));
+    bar.querySelector("b").style.width = `${p}%`;
+    bar.querySelector("u").style.left = `calc(${p}% - 1.5px)`;
   }
   const level = (v, [a, r]) => (v == null ? 0 : v >= r ? 2 : v >= a ? 1 : 0);
 
   function setRec(id, hist, cfg, value, sub) {
     const box = $(`[data-rec="${id}"]`);
     if (!box) return;
-    drawRecorder(box.querySelector("canvas"), hist, cfg);
+    record(box.querySelector("canvas"), hist, cfg);
     if (S.drums[id]) S.drums[id].set(value);
+    else setVal(id, value);
     if (sub !== undefined) setText($(`[data-sub="${id}"]`), sub || " ");
   }
   const minmax = (h, digits = 0) => {
@@ -489,6 +548,7 @@
   function render(snap) {
     if (!built) build();
     tick++;
+    lastSnap = performance.now();
     const m = snap.metrics || {};
     const clean = (s) => (s || "").replace(/^.*?\[#\d+\]:\s*/, "").split(":")[0].trim();
     setText($('[data-name="cpu"]'), clean(m.cpu_temp?.sensor || m.cpu_load?.sensor) || "—");
@@ -498,12 +558,14 @@
     S.g.cpu_temp.set(cpuT); S.g.gpu_temp.set(gpuT);
     S.g.cpu_load.set(num(m.cpu_load)); S.g.gpu_load.set(num(m.gpu_load));
     S.g.cpu_power.set(num(m.cpu_power)); S.g.gpu_power.set(num(m.gpu_power));
-    S.drums.cpu_clock.set(num(m.cpu_clock));
-    S.drums.vcore.set(num(m.vcore));
-    S.drums.gpu_clock.set(num(m.gpu_clock));
-    S.drums.vram_clock.set(num(m.vram_clock));
+    const round = (v) => (v == null ? null : Math.round(v));
+    setVal("cpu_clock", round(num(m.cpu_clock)));
+    setVal("vcore", num(m.vcore) != null ? comma(num(m.vcore).toFixed(2)) : null);
+    setVal("gpu_clock", round(num(m.gpu_clock)));
+    setVal("vram_clock", round(num(m.vram_clock)));
     lamp("cpu", level(cpuT, LAMP.cpu));
-    lamp("gpu", level(gpuT, LAMP.gpu));
+    // у ГП перегревом считается и горячая точка
+    lamp("gpu", Math.max(level(gpuT, LAMP.gpu), level(num(m.gpu_hotspot), LAMP.hotspot)));
 
     renderCores(snap.cores || [], snap.core_groups, m);
 
@@ -527,8 +589,8 @@
     const ramTotal = ramUsed != null && ramAvail != null ? ramUsed + ramAvail : null;
     const ramPct = num(m.ram_load) ?? (ramTotal ? (ramUsed / ramTotal) * 100 : null);
     const mem = (id, pct, used, total, extra) => {
-      S.drums[`${id}_pct`].set(pct != null ? Math.round(pct) : null);
-      $(`[data-hbar="${id}"] u`).style.left = `calc(${Math.max(0, Math.min(100, pct ?? 0))}% - 1.5px)`;
+      setVal(`${id}_pct`, pct != null ? Math.round(pct) : null);
+      fill($(`[data-hbar="${id}"]`), pct);
       setText($(`[data-sub="${id}"]`), used != null ? `занято ${comma(used.toFixed(1))} из ${total != null ? comma(Number(total).toFixed(1)) : "--"} ГБ` : " ");
       setText($(`[data-sub="${id}_extra"]`), extra);
     };
@@ -542,7 +604,6 @@
     const hs = num(m.gpu_hotspot);
     setRec("hotspot", gh.hotspot, { len: 600, smooth: 4 }, hs != null ? Math.round(hs) : null,
       hs != null && gpuT != null ? `Δ к ГП ${Math.round(hs - gpuT)} °C · ${minmax(gh.hotspot)}` : minmax(gh.hotspot));
-    lamp("hotspot", level(hs, LAMP.hotspot));
     const gfans = snap.gpu_fans || [];
     const fanHist = gh.fan || [];
     setRec("fan", fanHist, { len: 600, smooth: 4, lo: 0, hi: Math.max(2000, ...fanHist) },
@@ -571,9 +632,9 @@
     S.drums.ft.set(live && f.frametime_ms != null ? Number(f.frametime_ms) : null);
     S.drums.low.set(live && f.low1_fps != null ? Math.round(f.low1_fps) : null);
     setText($('[data-name="fps"]'), live ? f.app_name : fallback != null ? "" : snap.rtss_running ? "нет активной игры" : "RTSS не запущен");
-    $('[data-lamp="fps"]').dataset.level = live || fallback != null ? "1" : "0";
+    $('[data-lamp="fps"]').dataset.on = live || fallback != null ? "1" : "0";
     const fpsHist = live && f.history ? f.history.map((ft) => (ft > 0 ? 1000 / ft : null)) : [];
-    drawRecorder($('[data-canvas="fps"]'), fpsHist, { len: 60, minSpan: 30 });
+    record($('[data-canvas="fps"]'), fpsHist, { len: 60, minSpan: 30, smooth: 1 });
 
     renderDrives(snap.drives);
   }
@@ -593,7 +654,7 @@
         { key: "overshoot", type: "toggle", label: "Стрелки с перелётом",
           hint: "стрелка проскакивает значение и возвращается, как у настоящего прибора" },
         { key: "lamps", type: "toggle", label: "Лампочки перегрева",
-          hint: "ЦП и ГП: жёлтая от 80 °C, красная мигает от 90 (ГП — от 88)" },
+          hint: "жёлтая «Внимание» с 80 °C, красная «Перегрев» мигает с 90 °C (у ГП — с 88 °C или горячая точка с 100 °C)" },
       ] },
       { title: "Самописцы", items: [
         { key: "paper", type: "choice", label: "Лента", options: [["bright", "Светлая"], ["dim", "Тусклая"]],
@@ -614,7 +675,7 @@
       if (settings.overshoot) delete html.dataset.svStill; else html.dataset.svStill = "";
       if (built) {
         // лампочки и самописцы перерисуются на следующем снимке, стрелки — сразу
-        if (!opts.lamps) root.querySelectorAll("[data-lamp]").forEach((el) => { if (el.dataset.lamp !== "fps") el.dataset.level = "0"; });
+        if (!opts.lamps) root.querySelectorAll("[data-lamp]").forEach((el) => { if (el.dataset.lamp !== "fps") el.dataset.on = "0"; });
       }
     },
 
