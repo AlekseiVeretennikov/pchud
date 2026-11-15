@@ -127,16 +127,6 @@
     return res;
   }
 
-  // другая тема: сначала дописываем несохранённое, потом перезагружаем экран HUD
-  async function switchTheme(id) {
-    if (id === theme.id) return;
-    setStatus("переключаю тему…");
-    await save();
-    const res = await send({ theme: id });
-    if (res.ok) location.reload();
-    else setStatus(`не сохранено: ${res.error}`, true);
-  }
-
   function setStatus(text, error = false) {
     if (!statusEl) return;
     statusEl.textContent = text;
@@ -200,6 +190,7 @@
         if (swatch) {
           const dot = el("span", "settings__swatch");
           dot.style.background = swatch;
+          if (!text) dot.style.marginRight = "0";    // кружок без подписи — по центру
           b.prepend(dot);
         }
         b.addEventListener("click", () => {
@@ -236,16 +227,17 @@
     head.append(close);
     panel.append(head);
 
-    const themes = window.HudThemes.list();
-    if (themes.length > 1) {
-      panel.append(buildSection({ title: "Тема", items: [{
-        key: "theme", type: "choice",
-        options: themes.map((t) => [t.id, t.name]),
-        value: () => theme.id,
-        onPick: switchTheme,
-        hint: "у каждой темы свои настройки ниже",
-      }] }, "general"));
+    // какая тема сейчас; сменить — в галерее «Темы» (themes/gallery.js)
+    const current = el("div", "settings__theme");
+    current.append(el("span", "", "Тема "), el("b", "", `«${theme.name}»`));
+    if (window.HudThemes.list().length > 1 && window.HudGallery) {
+      const change = el("button", "settings__link", "сменить");
+      change.type = "button";
+      change.addEventListener("click", (e) => { e.stopPropagation(); hide(); window.HudGallery.show(); });
+      current.append(change);
     }
+    panel.append(current);
+
     theme.sections.forEach((section) => panel.append(buildSection(section, "theme")));
     generalSections(monitors).forEach((section) => panel.append(buildSection(section, "general", " settings__section--general")));
 
@@ -259,6 +251,7 @@
   function toggle() { panel.hidden ? show() : hide(); }
 
   window.HudSettings = {
+    hide: () => { if (panel) hide(); },
     // cfg — ответ get_config; activeTheme и её настройки уже выбрал app.js
     init(cfg, activeTheme, settings) {
       if (panel) return;

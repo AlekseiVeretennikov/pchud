@@ -909,6 +909,7 @@ async function startEffects() {
   document.documentElement.dataset.theme = theme.id;
   theme.start(settings, { version: config.version });
   window.HudSettings.init(config, theme, settings);   // строит панель и применяет настройки темы
+  window.HudGallery.init();                           // кнопка «Темы»: выбор темы
   setupFullscreen(config.fullscreen);
 }
 

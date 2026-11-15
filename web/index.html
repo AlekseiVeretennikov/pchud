@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PC HUD</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="themes/windows.css">
 </head>
 <body class="boot-pending">
   <!-- Анимированный фон: выбирается в config.json, файлы лежат в backgrounds/ -->
@@ -248,7 +249,8 @@
       </button>
       <button class="report-btn" id="report-btn" type="button"
               title="Скриншот и список датчиков одним архивом на рабочий стол — для автора">Отчёт</button>
-      <button class="report-btn" id="settings-btn" type="button" title="Фон, эффекты, заставка">Настройки</button>
+      <button class="report-btn" id="themes-btn" type="button" title="Сменить тему оформления">Темы</button>
+      <button class="report-btn" id="settings-btn" type="button" title="Настройки текущей темы и окна">Настройки</button>
       <button class="report-btn" id="fullscreen-btn" type="button" title="На весь экран (F11)">Весь экран</button>
       <button class="report-btn report-btn--quit" id="quit-btn" type="button" title="Закрыть PC HUD">Выйти</button>
       <span class="clock" data-bind="clock">--:--</span>
@@ -262,6 +264,8 @@
   <script src="boot.js"></script>
   <script src="themes/registry.js"></script>
   <script src="themes/matrix.js"></script>
+  <script src="themes/windows.js"></script>
+  <script src="themes/gallery.js"></script>
   <script src="settings.js"></script>
   <script src="app.js"></script>
 </body>

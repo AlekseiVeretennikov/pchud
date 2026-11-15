@@ -27,6 +27,8 @@
   window.HudThemes.register({
     id: "matrix",
     name: "Матрица",
+    description: "Дождь символов, шифрование подписей, заставка-взлом. Четыре палитры",
+    preview: "themes/previews/matrix.jpg",
     defaults: {
       palette: "cyan", ui_brightness: 100,
       background: "cipher-rain", bg_brightness: 100, bg_field: true, bg_drops: true, bg_words: true,
