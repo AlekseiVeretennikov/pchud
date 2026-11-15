@@ -26,6 +26,7 @@
       case "toggle": return item.on ? v === item.on || v === item.off : typeof v === "boolean";
       case "range":  return typeof v === "number" && v >= item.min && v <= item.max;
       case "choice": return item.options.some(([value]) => value === v);
+      case "color":  return typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
       default: return false;
     }
   }
@@ -42,7 +43,7 @@
       const saved = stored && typeof stored === "object" ? stored : {};
       for (const section of theme.sections) {
         for (const item of section.items) {
-          if (item.key in saved && valid(item, saved[item.key])) out[item.key] = saved[item.key];
+          if (item.key && item.key in saved && valid(item, saved[item.key])) out[item.key] = saved[item.key];
         }
       }
       return out;

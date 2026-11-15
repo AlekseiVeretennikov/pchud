@@ -409,6 +409,59 @@ body.boot-pending .hud { opacity: 0; }
   background: transparent; color: var(--ink-dim); border: 0; cursor: pointer;
 }
 .settings__choice button + button { border-left: 1px solid var(--line); }
+.settings__row[hidden] { display: none; }
+/* «Свой цвет»: квадрат-образец, по щелчку — выбор цвета */
+.settings__row--color { flex-wrap: wrap; }
+.settings__color {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 5px 12px; cursor: pointer; font: inherit;
+  background: transparent; border: 1px solid var(--line); border-radius: 8px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+}
+.settings__color:hover, .settings__color--open {
+  border-color: rgba(var(--accent-rgb), 0.6); background: rgba(var(--accent-rgb), 0.08);
+}
+.settings__color .settings__swatch { width: 12px; height: 12px; }
+
+/* встроенная палитра «Свой цвет» */
+.picker {
+  flex-basis: 100%; margin-top: 10px; padding: 10px;
+  display: flex; flex-direction: column; gap: 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: rgba(var(--ink-rgb), 0.03);
+}
+.picker[hidden] { display: none; }
+.picker__sv {
+  position: relative; height: 130px; border-radius: 6px; cursor: crosshair; touch-action: none;
+}
+.picker__hue {
+  position: relative; height: 12px; border-radius: 6px; cursor: pointer; touch-action: none;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.picker__knob {
+  position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.picker__knob--hue { top: 50%; }
+.picker__line { display: flex; gap: 8px; }
+.picker__hex {
+  flex: 1; min-width: 0; padding: 5px 8px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: rgba(var(--ink-rgb), 0.05); border: 1px solid var(--line); border-radius: 6px; outline: none;
+}
+.picker__hex:focus { border-color: rgba(var(--accent-rgb), 0.7); }
+.picker__drop {
+  font: inherit; font-size: 12px; padding: 5px 10px; cursor: pointer;
+  color: var(--cyan); background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.45); border-radius: 6px;
+}
+.picker__drop:hover { background: rgba(var(--accent-rgb), 0.2); }
+.picker__presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.picker__preset {
+  width: 20px; height: 20px; padding: 0; cursor: pointer; border-radius: 50%;
+  border: 1px solid rgba(var(--ink-rgb), 0.25);
+}
+.picker__preset:hover { transform: scale(1.15); }
 /* длинные подписи (мониторы) — столбиком */
 .settings__choice--vertical { flex-direction: column; }
 .settings__choice--vertical button { padding: 6px 10px; text-align: left; }
