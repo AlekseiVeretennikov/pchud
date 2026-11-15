@@ -229,7 +229,7 @@ pchud/
 │       └── demo.py        синтетические данные
 ├── web/                   HTML/CSS/JS дашборда
 │   ├── themes/            темы оформления (registry.js — как их описывать)
-│   └── fonts/             шрифты PT Sans Narrow и PT Mono (ParaType, SIL OFL 1.1)
+│   └── fonts/             шрифт osifont для «Приборной панели» (LGPL 3 с исключением для шрифтов)
 ├── run_hud.py             точка входа для .exe
 ├── start.bat              запуск из исходников
 ├── build.bat              сборка dist\PC-HUD.exe
@@ -239,5 +239,5 @@ pchud/
 
 ## Лицензия
 
-MIT, см. `LICENSE`. Шрифты в `web/fonts/` — ParaType, SIL Open Font License 1.1
-(`web/fonts/OFL.txt`).
+MIT, см. `LICENSE`. Шрифт osifont в `web/fonts/` — GNU LGPL 3 с исключением для шрифтов
+(`web/fonts/README.txt`).

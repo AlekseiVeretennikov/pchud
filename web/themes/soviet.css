@@ -1,8 +1,7 @@
 /* Тема «Приборная панель» (themes/soviet.js). Всё — под html[data-theme="soviet"].
- * Шрифты PT Sans Narrow и PT Mono (ParaType, SIL OFL 1.1) — web/fonts/, лицензия там же. */
-@font-face { font-family: "PT Sans Narrow"; src: url("../fonts/PT_Sans-Narrow-Web-Regular.ttf") format("truetype"); font-weight: 400; }
-@font-face { font-family: "PT Sans Narrow"; src: url("../fonts/PT_Sans-Narrow-Web-Bold.ttf") format("truetype"); font-weight: 700; }
-@font-face { font-family: "PT Mono"; src: url("../fonts/PTM55FT.ttf") format("truetype"); }
+ * Шрифт osifont — чертёжный, по ISO 3098 (как ГОСТ 2.304 на приборах и чертежах);
+ * web/fonts/, лицензия LGPL 3 с исключением для шрифтов — там же, README.txt. */
+@font-face { font-family: "osifont"; src: url("../fonts/osifont-lgpl3fe.ttf") format("truetype"); }
 
 html[data-theme="soviet"] {
   /* эмаль: серо-зелёная «молотковая» краска приборных шкафов */
@@ -15,8 +14,8 @@ html[data-theme="soviet"] {
   --ink: #ece6d4; --ink-dim: #a9b0a6; --cyan: #ffb648; --amber: #ffb648; --red: #e0483e; --track: #1d221f;
   --bg-rgb: 86, 99, 91; --panel-rgb: 44, 51, 46; --panel2-rgb: 37, 43, 39;
   --ink-rgb: 236, 230, 212; --dim-rgb: 169, 176, 166; --accent-rgb: 255, 182, 72;
-  --sans: "PT Sans Narrow", "Segoe UI", sans-serif;
-  --mono: "PT Mono", "Consolas", monospace;
+  --sans: "osifont", "Segoe UI", sans-serif;
+  --mono: "osifont", "Consolas", monospace;
 }
 html[data-theme="soviet"][data-sv-case="bakelite"] {
   /* карболит: тёмно-коричневая пластмасса */
@@ -197,7 +196,7 @@ html[data-sv-still] .sv-edge__ptr { transition: bottom 0.7s ease-out; }
 .sv-recs--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .sv-rec { display: flex; flex-direction: column; gap: 4px; min-height: 0; min-width: 0; }
 .sv-rec__head { display: flex; align-items: center; gap: 6px; min-height: 24px; }
-.sv-rec__t { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sv-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-rec__t { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sv-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
 .sv-rec__head .sv-lamp { flex: none; }
 .sv-rec__head .sv-slot { margin-left: auto; }
 .sv-rec__head .sv-unit { font-size: 13px; color: var(--sv-dim); margin-left: 2px; }
@@ -247,7 +246,7 @@ html[data-sv-still] .sv-edge__ptr { transition: bottom 0.7s ease-out; }
 .sv-fps { display: flex; gap: 18px; align-items: flex-end; flex: none; }
 .sv-fps__info { display: flex; flex-direction: column; gap: 6px; padding-bottom: 2px; }
 .sv-fps__info > div { display: flex; align-items: center; gap: 8px; }
-.sv-fps__info .sv-cap { width: 96px; }
+.sv-fps__info .sv-cap { width: 132px; }
 .sv-fps__info .sv-unit { margin-left: 0; font-size: 13px; color: var(--sv-dim); }
 .sv-rec__win--fps { flex: 1; }
 
