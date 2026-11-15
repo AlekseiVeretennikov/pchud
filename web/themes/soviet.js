@@ -31,14 +31,6 @@
   const screws = '<i class="sv-screw sv-screw--tl"></i><i class="sv-screw sv-screw--tr"></i>' +
                  '<i class="sv-screw sv-screw--bl"></i><i class="sv-screw sv-screw--br"></i>';
   function setText(el, text) { if (el && el.textContent !== text) el.textContent = text; }
-  // число с плавным счётом (countText из app.js); null — прочерк
-  function count(el, v) {
-    if (!el) return;
-    const text = v == null ? "--" : String(v);
-    if (typeof window.countText === "function") window.countText(el, text);
-    else setText(el, text);
-  }
-  const setVal = (id, v) => count($(`[data-val="${id}"]`), v);
 
   /* ── анимация: один цикл на все стрелки и барабаны, спит, когда всё стоит ── */
   const movers = new Set();
@@ -95,6 +87,7 @@
     for (let i = 0; i < digits; i++) col();
     if (frac) { const s = document.createElement("span"); s.className = "sv-drum__sep"; s.textContent = ","; el.append(s); }
     for (let i = 0; i < frac; i++) col();
+    [...el.querySelectorAll(".sv-drum__d")].pop().classList.add("sv-drum__d--last");
     const place = (c) => {
       const pos = c.dash ? 11 : ((c.p % 10) + 10) % 10;
       c.strip.style.transform = `translateY(${(-pos * 1.25).toFixed(3)}em)`;
@@ -132,8 +125,95 @@
     return d;
   }
 
+  /* Газоразрядные лампы (как ИН-14) и люминесцентный индикатор (как ИВ-11).
+     Лампа: цифра гаснет и вспыхивает новой. Люминесцентный: сегменты переключаются
+     с коротким послесвечением; ведущие нули не горят, как в настоящих часах. */
+  const SEG = { 0: "abcdef", 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc", 5: "afgcd", 6: "afgedc", 7: "abc", 8: "abcdefg", 9: "abcdfg", "-": "g", " ": "" };
+  const SEG_RECT = { a: [3, 1, 14, 3.4], d: [3, 29.6, 14, 3.4], g: [3, 15.3, 14, 3.4], f: [1, 3, 3.4, 13],
+                     b: [15.6, 3, 3.4, 13], e: [1, 18, 3.4, 13], c: [15.6, 18, 3.4, 13] };
+  function glowInd(style, digits, frac, cls) {
+    const el = document.createElement("span");
+    el.className = `sv-ind sv-ind--${style} sv-ind--off ${cls}`.trim();
+    const cells = [];
+    for (let i = 0; i < digits + frac; i++) {
+      if (style === "nixie" && frac && i === digits) {
+        const sep = document.createElement("span"); sep.className = "sv-nix__sep"; sep.textContent = ","; el.append(sep);
+      }
+      const c = document.createElement("span");
+      if (style === "nixie") {
+        c.className = "sv-nix"; c.innerHTML = "<b>-</b>";
+        cells.push({ el: c, d: c.firstChild, cur: "-" });
+      } else {
+        c.className = "sv-vfd";
+        c.innerHTML = `<svg viewBox="0 0 24 34">${Object.entries(SEG_RECT).map(([k, [x, y, w, h]]) =>
+          `<rect data-s="${k}" x="${x}" y="${y}" width="${w}" height="${h}" rx="1.4"/>`).join("")}` +
+          `<circle cx="21.6" cy="31" r="1.8"/></svg>`;
+        const seg = {};
+        c.querySelectorAll("rect").forEach((r) => { seg[r.dataset.s] = r; });
+        cells.push({ el: c, seg, dot: c.querySelector("circle"), cur: null });
+        if (frac && i === digits - 1) c.querySelector("circle").classList.add("on");   // запятая
+      }
+      el.append(c);
+    }
+    const show = (c, ch) => {
+      if (c.cur === ch) return;
+      c.cur = ch;
+      if (style === "nixie") {
+        c.d.textContent = ch;
+        c.el.classList.remove("sv-nix--in"); void c.el.offsetWidth; c.el.classList.add("sv-nix--in");
+      } else {
+        const on = SEG[ch] || "";
+        for (const k in c.seg) c.seg[k].classList.toggle("on", on.includes(k));
+      }
+    };
+    return {
+      el,
+      set(v) {
+        const off = v == null || Number.isNaN(v);
+        el.classList.toggle("sv-ind--off", off);
+        let chars;
+        if (off) chars = cells.map(() => "-");
+        else {
+          const n = Math.max(0, Math.min(Math.round(v * 10 ** frac), 10 ** (digits + frac) - 1));
+          chars = String(n).padStart(digits + frac, "0").split("");
+          if (style === "vfd") {                     // ведущие нули гаснут, единицы — всегда
+            for (let i = 0; i < digits - 1 && chars[i] === "0"; i++) chars[i] = " ";
+          }
+        }
+        cells.forEach((c, i) => show(c, chars[i]));
+      },
+    };
+  }
+  function indicator(digits, frac = 0, cls = "") {
+    const style = opts.digits || "drum";
+    if (style === "nixie" || style === "vfd") return glowInd(style, digits, frac, cls);
+    return drum(digits, frac, `${cls} ${style === "light" ? "sv-drum--light" : ""}`);
+  }
+  // все индикаторы HUD: слот в разметке → индикатор; при смене «Цифр» — пересоздаём
+  const inds = new Map();
+  function mount(slot) {
+    const r = { slot, digits: +slot.dataset.digits, frac: +(slot.dataset.frac || 0), cls: slot.dataset.cls || "", v: null };
+    r.obj = indicator(r.digits, r.frac, r.cls);
+    slot.replaceChildren(r.obj.el);
+    inds.set(slot.dataset.ind, r);
+  }
+  function setInd(id, v) {
+    const r = inds.get(id);
+    if (!r) return;
+    r.v = v; r.obj.set(v);
+  }
+  function remountAll() {
+    for (const r of inds.values()) {
+      r.obj = indicator(r.digits, r.frac, r.cls);
+      r.slot.replaceChildren(r.obj.el);
+      r.obj.set(r.v);
+    }
+  }
+  const ind = (id, digits, frac = 0, cls = "") =>
+    `<span class="sv-slot ${cls}" data-ind="${id}" data-digits="${digits}" data-frac="${frac}"></span>`;
+
   /* ── круглый прибор 270° со счётчиком в окошке (как одометр в спидометре) ── */
-  function roundGauge(host, { size = 212, min = 20, max = 100, step = 10, minor = 2, red = 90, unit = "°C" }) {
+  function roundGauge(host, { id, size = 212, min = 20, max = 100, step = 10, minor = 2, red = 90, unit = "°C" }) {
     const c = size / 2, R = c - 6, A0 = -135, A1 = 135;
     const ang = (v) => A0 + ((Math.max(min - 3, Math.min(max + 3, v ?? min)) - min) / (max - min)) * (A1 - A0);
     let s = `<svg class="sv-round" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
@@ -150,15 +230,14 @@
     }
     s += `<path d="${arc(c, c, R - 6, A0, A1)}" class="sv-tick" stroke-width="1.2" fill="none"/>
       <text x="${c}" y="${c + R * 0.36}" class="sv-num" font-size="${(size * 0.1).toFixed(1)}">${unit}</text>
-      <text x="${c}" y="${c + R * 0.66}" class="sv-num sv-gval" font-size="${(size * 0.135).toFixed(1)}">--</text>
+      <foreignObject x="${c - 45}" y="${c + R * 0.43}" width="90" height="36"><div xmlns="http://www.w3.org/1999/xhtml" class="sv-dialwin">${ind(id, 3, 0, "sv-slot--dial")}</div></foreignObject>
       <g class="sv-needle"><line x1="${c}" y1="${c + R * 0.2}" x2="${c}" y2="${c - R + 8}" class="sv-needle__body" stroke-width="3.2"/>
         <line x1="${c}" y1="${c - R * 0.55}" x2="${c}" y2="${c - R + 8}" class="sv-needle__tip" stroke-width="3.2"/></g>
       <circle cx="${c}" cy="${c}" r="${size * 0.06}" fill="#1c1b19"/><circle cx="${c}" cy="${c}" r="${size * 0.025}" fill="#77756e"/>
       <circle cx="${c}" cy="${c}" r="${R + 4}" class="sv-glass"/></svg>`;
     host.innerHTML = `<div class="sv-bezel">${s}</div>`;
-    const val = host.querySelector(".sv-gval");
     const n = needle(host.querySelector(".sv-needle"), c, c, ang);
-    return { set(v) { n.set(v); count(val, v == null ? null : Math.round(v)); } };
+    return { set(v) { n.set(v); setInd(id, v == null ? null : Math.round(v)); } };
   }
 
   /* ── щитовой прибор: прямоугольный, дуга ±37°, зеркальная полоска, класс точности ── */
@@ -333,18 +412,16 @@
     `<span class="sv-lamps">${lampHtml(`${id}-warn`, "amber", "Внимание", `${what}: тепло`)}${lampHtml(`${id}-crit`, "red", "Перегрев", `${what}: перегрев`)}</span>`;
 
   /* ── разметка ──────────────────────────────────────────── */
-  function recHtml(id, title, unit, digits, withDrum = false) {
-    const value = withDrum
-      ? `<span class="sv-slot" data-drum="${id}" data-digits="${digits}"></span>`
-      : `<span class="sv-val sv-val--rec" data-val="${id}">--</span>`;
+  function recHtml(id, title, unit, digits) {
+    const value = ind(id, digits);
     return `<div class="sv-rec" data-rec="${id}">
       <div class="sv-rec__head"><span class="sv-rec__t">${title}</span>${value}<span class="sv-unit">${unit}</span></div>
       <div class="sv-rec__win"><canvas></canvas></div>
       <div class="sv-rec__sub" data-sub="${id}">&nbsp;</div></div>`;
   }
-  function readout(id, label, unit) {
+  function readout(id, label, unit, digits, frac = 0) {
     return `<div class="sv-readout"><span class="sv-cap">${label}</span>
-      <div><span class="sv-val sv-val--lg" data-val="${id}">--</span><span class="sv-unit sv-unit--lg">${unit}</span></div></div>`;
+      <div>${ind(id, digits, frac, "sv-slot--lg")}<span class="sv-unit sv-unit--lg">${unit}</span></div></div>`;
   }
   function meterRow(p) {
     return `<div class="sv-meters">
@@ -352,14 +429,14 @@
       <div class="sv-mcol"><div data-gauge="${p}_load"></div><span class="sv-cap">Нагрузка</span></div>
       <div class="sv-mcol"><div data-gauge="${p}_power"></div><span class="sv-cap">Мощность</span></div>
       <div class="sv-readouts">${p === "cpu"
-        ? readout("cpu_clock", "Частота", "МГц") + readout("vcore", "Напряжение", "В")
-        : readout("gpu_clock", "Частота", "МГц") + readout("vram_clock", "Частота памяти", "МГц")}</div>
+        ? readout("cpu_clock", "Частота", "МГц", 4) + readout("vcore", "Напряжение", "В", 1, 2)
+        : readout("gpu_clock", "Частота", "МГц", 4) + readout("vram_clock", "Частота памяти", "МГц", 5)}</div>
     </div>`;
   }
   function memHtml(id, plate) {
     return `<div class="sv-mem">
       <div class="sv-mem__row"><span class="sv-plate sv-plate--sm">${plate}</span>
-        <span class="sv-val" data-val="${id}_pct">--</span><span class="sv-unit">%</span>
+        ${ind(`${id}_pct`, 3)}<span class="sv-unit">%</span>
         <span class="sv-mem__extra" data-sub="${id}_extra"></span></div>
       <div class="sv-hbar" data-hbar="${id}"><b></b><u></u></div>
       <div class="sv-mem__sub" data-sub="${id}">&nbsp;</div></div>`;
@@ -403,10 +480,10 @@
       <section class="sv-card sv-card--fps">${screws}
         <div class="sv-head"><span class="sv-plate">Кадры</span><span class="sv-name" data-name="fps">—</span><span class="sv-lamps">${lampHtml("fps", "green", "Игра", "Игра идёт: RTSS отдаёт кадры")}</span></div>
         <div class="sv-fps">
-          <div class="sv-readout"><span class="sv-cap">кадр/с</span><span class="sv-slot sv-slot--xl" data-drum="fps" data-digits="3"></span></div>
+          <div class="sv-readout"><span class="sv-cap">кадр/с</span>${ind("fps", 3, 0, "sv-slot--xl")}</div>
           <div class="sv-fps__info">
-            <div><span class="sv-cap">время кадра</span><span class="sv-slot" data-drum="ft" data-digits="2" data-frac="1"></span><span class="sv-unit">мс</span></div>
-            <div><span class="sv-cap">1% худших</span><span class="sv-slot" data-drum="low" data-digits="3"></span><span class="sv-unit">к/с</span></div>
+            <div><span class="sv-cap">время кадра</span>${ind("ft", 2, 1)}<span class="sv-unit">мс</span></div>
+            <div><span class="sv-cap">1% худших</span>${ind("low", 3)}<span class="sv-unit">к/с</span></div>
           </div>
         </div>
         <div class="sv-rec__win sv-rec__win--fps"><canvas data-canvas="fps"></canvas></div>
@@ -415,20 +492,15 @@
     hud.insertBefore(root, hud.querySelector(".hud__foot"));
     // .sv — обёртка без своей коробки: карточки встают прямо в сетку .hud
 
-    S.drums = {};
-    root.querySelectorAll("[data-drum]").forEach((slot) => {
-      const d = drum(+slot.dataset.digits, +(slot.dataset.frac || 0));
-      slot.append(d.el);
-      S.drums[slot.dataset.drum] = d;
-    });
     S.g = {
-      cpu_temp: roundGauge($('[data-gauge="cpu_temp"]'), { red: 90 }),
-      gpu_temp: roundGauge($('[data-gauge="gpu_temp"]'), { red: 85 }),
+      cpu_temp: roundGauge($('[data-gauge="cpu_temp"]'), { id: "cpu_temp", red: 90 }),
+      gpu_temp: roundGauge($('[data-gauge="gpu_temp"]'), { id: "gpu_temp", red: 85 }),
       cpu_load: panelMeter($('[data-gauge="cpu_load"]'), { unit: "%" }),
       gpu_load: panelMeter($('[data-gauge="gpu_load"]'), { unit: "%" }),
       cpu_power: panelMeter($('[data-gauge="cpu_power"]'), { unit: "Вт", max: 200, red: 0.85, grow: true }),
       gpu_power: panelMeter($('[data-gauge="gpu_power"]'), { unit: "Вт", max: 400, red: 0.85, grow: true }),
     };
+    root.querySelectorAll("[data-ind]").forEach(mount);
     built = true;
   }
 
@@ -475,9 +547,10 @@
     if (host.dataset.slots !== slots) {
       host.dataset.slots = slots;
       host.innerHTML = dimms.length ? `<span class="sv-cap">Планки</span>` + dimms.map((d) =>
-        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span><span class="sv-val" data-val="dimm${d.slot}">--</span><span class="sv-unit">°C</span></span>`).join("") : "";
+        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span>${ind(`dimm${d.slot}`, 2, 0, "sv-slot--sm")}<span class="sv-unit">°C</span></span>`).join("") : "";
+      host.querySelectorAll("[data-ind]").forEach(mount);
     }
-    dimms.forEach((d) => setVal(`dimm${d.slot}`, d.temp != null ? Math.round(d.temp) : null));
+    dimms.forEach((d) => setInd(`dimm${d.slot}`, d.temp != null ? Math.round(d.temp) : null));
   }
 
   function renderDrives(drives) {
@@ -489,10 +562,11 @@
       host.innerHTML = list.length ? list.map((d) => `<div class="sv-drive" data-letter="${d.letter}">
           <span class="sv-drive__l">${d.letter}</span><span class="sv-drive__k">${d.kind === "HDD" ? "ЖМД" : d.kind === "NVMe" ? "NVMe" : "ТТН"}</span>
           <div class="sv-hbar"><b></b><u></u></div><span class="sv-drive__p"></span><span class="sv-drive__s"></span></div>`).join("") +
-        `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чтение</span><span class="sv-val" data-val="rw_r">--</span>
-          <span class="sv-cap">Запись</span><span class="sv-val" data-val="rw_w">--</span><span class="sv-unit">МБ/с</span></div>`
+        `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чтение</span>${ind("rw_r", 4, 0, "sv-slot--sm")}
+          <span class="sv-cap">Запись</span>${ind("rw_w", 4, 0, "sv-slot--sm")}<span class="sv-unit">МБ/с</span></div>`
         : '<div class="sv-cap">нет данных</div>';
       host.classList.toggle("sv-drives--dense", list.length > 3);
+      host.querySelectorAll("[data-ind]").forEach(mount);
     }
     let hot = 0, r = 0, w = 0;
     for (const d of list) {
@@ -508,8 +582,8 @@
       setText(row.querySelector(".sv-drive__s"), `${size}${t != null ? ` · ${t}°` : ""}`);
       r += d.read_mbs || 0; w += d.write_mbs || 0;
     }
-    setVal("rw_r", list.length ? Math.round(r) : null);
-    setVal("rw_w", list.length ? Math.round(w) : null);
+    setInd("rw_r", list.length ? Math.round(r) : null);
+    setInd("rw_w", list.length ? Math.round(w) : null);
     lamp("drives", hot);
   }
 
@@ -534,8 +608,7 @@
     const box = $(`[data-rec="${id}"]`);
     if (!box) return;
     record(box.querySelector("canvas"), hist, cfg);
-    if (S.drums[id]) S.drums[id].set(value);
-    else setVal(id, value);
+    setInd(id, value);
     if (sub !== undefined) setText($(`[data-sub="${id}"]`), sub || " ");
   }
   const minmax = (h, digits = 0) => {
@@ -559,10 +632,10 @@
     S.g.cpu_load.set(num(m.cpu_load)); S.g.gpu_load.set(num(m.gpu_load));
     S.g.cpu_power.set(num(m.cpu_power)); S.g.gpu_power.set(num(m.gpu_power));
     const round = (v) => (v == null ? null : Math.round(v));
-    setVal("cpu_clock", round(num(m.cpu_clock)));
-    setVal("vcore", num(m.vcore) != null ? comma(num(m.vcore).toFixed(2)) : null);
-    setVal("gpu_clock", round(num(m.gpu_clock)));
-    setVal("vram_clock", round(num(m.vram_clock)));
+    setInd("cpu_clock", round(num(m.cpu_clock)));
+    setInd("vcore", num(m.vcore));
+    setInd("gpu_clock", round(num(m.gpu_clock)));
+    setInd("vram_clock", round(num(m.vram_clock)));
     lamp("cpu", level(cpuT, LAMP.cpu));
     // у ГП перегревом считается и горячая точка
     lamp("gpu", Math.max(level(gpuT, LAMP.gpu), level(num(m.gpu_hotspot), LAMP.hotspot)));
@@ -589,7 +662,7 @@
     const ramTotal = ramUsed != null && ramAvail != null ? ramUsed + ramAvail : null;
     const ramPct = num(m.ram_load) ?? (ramTotal ? (ramUsed / ramTotal) * 100 : null);
     const mem = (id, pct, used, total, extra) => {
-      setVal(`${id}_pct`, pct != null ? Math.round(pct) : null);
+      setInd(`${id}_pct`, pct != null ? Math.round(pct) : null);
       fill($(`[data-hbar="${id}"]`), pct);
       setText($(`[data-sub="${id}"]`), used != null ? `занято ${comma(used.toFixed(1))} из ${total != null ? comma(Number(total).toFixed(1)) : "--"} ГБ` : " ");
       setText($(`[data-sub="${id}_extra"]`), extra);
@@ -628,9 +701,9 @@
     const live = f && f.fps;
     const fallback = !live && num(m.fps) > 0 ? num(m.fps) : null;
     card.classList.toggle("sv-card--idle", !live && fallback == null);
-    S.drums.fps.set(live ? Math.round(f.fps) : fallback != null ? Math.round(fallback) : null);
-    S.drums.ft.set(live && f.frametime_ms != null ? Number(f.frametime_ms) : null);
-    S.drums.low.set(live && f.low1_fps != null ? Math.round(f.low1_fps) : null);
+    setInd("fps", live ? Math.round(f.fps) : fallback != null ? Math.round(fallback) : null);
+    setInd("ft", live && f.frametime_ms != null ? Number(f.frametime_ms) : null);
+    setInd("low", live && f.low1_fps != null ? Math.round(f.low1_fps) : null);
     setText($('[data-name="fps"]'), live ? f.app_name : fallback != null ? "" : snap.rtss_running ? "нет активной игры" : "RTSS не запущен");
     $('[data-lamp="fps"]').dataset.on = live || fallback != null ? "1" : "0";
     const fpsHist = live && f.history ? f.history.map((ft) => (ft > 0 ? 1000 / ft : null)) : [];
@@ -644,11 +717,16 @@
     name: "Приборная панель",
     description: "Щит приборов в советском духе: стрелки, барабанные счётчики, самописцы и лампочки перегрева",
     preview: "themes/previews/soviet.jpg",
-    defaults: { case: "enamel", overshoot: true, paper: "bright", ink: "violet", lamps: true },
+    defaults: { case: "enamel", digits: "drum", overshoot: true, paper: "bright", ink: "violet", lamps: true },
     sections: [
       { title: "Корпус", items: [
         { key: "case", type: "choice", options: [["enamel", "Эмаль", "#56635b"], ["bakelite", "Карболит", "#2a201a"]],
           hint: "эмаль — серо-зелёная краска приборных шкафов, карболит — тёмная пластмасса" },
+      ] },
+      { title: "Цифры", items: [
+        { key: "digits", type: "choice", options: [
+          ["drum", "Барабан"], ["light", "Светлый барабан"], ["nixie", "Газоразрядные лампы"], ["vfd", "Люминесцентные"]],
+          hint: "барабан — как у счётчиков, лампы — как ИН-14, люминесцентные — как в часах «Электроника»" },
       ] },
       { title: "Приборы", items: [
         { key: "overshoot", type: "toggle", label: "Стрелки с перелётом",
@@ -669,7 +747,9 @@
     },
 
     apply(settings) {
+      const restyle = built && settings.digits !== opts.digits;
       opts = { ...opts, ...settings };
+      if (restyle) remountAll();
       const html = document.documentElement;
       html.dataset.svCase = settings.case;
       if (settings.overshoot) delete html.dataset.svStill; else html.dataset.svStill = "";
