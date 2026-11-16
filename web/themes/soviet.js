@@ -540,9 +540,10 @@
             <span class="sv-ccd__t" data-gtemp="${g.temp_key || ""}"></span></div>
           <div class="sv-strip">${ids.map((id) => `<div class="sv-edge" data-core="${id}">
             <span class="sv-edge__n">Я${id + 1}</span>
-            <div class="sv-edge__pair"><div class="sv-edge__nums">${EDGE_NUMS}</div><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
-            <span class="sv-edge__v">${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}<span class="sv-unit">ГГц</span></span>
-            <span class="sv-edge__v">${ind(`core_t_${id}`, 2, 1, "sv-slot--core")}<span class="sv-unit">°C</span></span></div>`).join("")}</div></div>`;
+            <div class="sv-edge__body">
+              <div class="sv-edge__pair"><div class="sv-edge__nums">${EDGE_NUMS}</div><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
+              <span class="sv-edge__v">${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}<span class="sv-unit">ГГц</span></span>
+              <span class="sv-edge__v">${ind(`core_t_${id}`, 2, 1, "sv-slot--core")}<span class="sv-unit">°C</span></span></div></div>`).join("")}</div></div>`;
       }).join("") + `</div>`;
       host.title = "Шкала с красной стрелкой — нагрузка ядра, %; светящийся столбик — температура 30–100 °C";
       host.classList.toggle("sv-cores--one", groups.length === 1);
