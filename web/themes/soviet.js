@@ -213,7 +213,7 @@
     `<span class="sv-slot ${cls}" data-ind="${id}" data-digits="${digits}" data-frac="${frac}"></span>`;
 
   /* ── круглый прибор 270° со счётчиком в окошке (как одометр в спидометре) ── */
-  function roundGauge(host, { id, size = 212, min = 20, max = 100, step = 10, minor = 2, red = 90, unit = "°C" }) {
+  function roundGauge(host, { id, size = 196, min = 20, max = 100, step = 10, minor = 2, red = 90, unit = "°C" }) {
     const c = size / 2, R = c - 6, A0 = -135, A1 = 135;
     const ang = (v) => A0 + ((Math.max(min - 3, Math.min(max + 3, v ?? min)) - min) / (max - min)) * (A1 - A0);
     let s = `<svg class="sv-round" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
@@ -243,7 +243,7 @@
   /* ── щитовой прибор: прямоугольный, дуга ±37°, зеркальная полоска, класс точности ── */
   const NICE = [100, 150, 200, 300, 400, 500, 600, 800, 1000];
   function stepFor(max) { return max <= 100 ? 20 : max <= 200 ? 50 : max <= 600 ? 100 : 200; }
-  function panelMeter(host, { w = 186, h = 140, max = 100, unit = "%", red = null, grow = false }) {
+  function panelMeter(host, { w = 180, h = 130, max = 100, unit = "%", red = null, grow = false }) {
     const cx = w / 2, cy = h + 30, R = h + 6, A = 37;
     const m = { max, needle: null, value: null };
     function build() {
@@ -523,6 +523,12 @@
     if (!cores || !cores.length) { host.hidden = true; return; }
     host.hidden = false;
     if (!groups || !groups.length) groups = [{ name: "Ядра", tag: null, cores: cores.map((c) => c.id) }];
+    // группа больше 12 ядер (один общий кристалл) — на две строки
+    groups = groups.flatMap((g) => {
+      if (g.cores.length <= 12) return [g];
+      const half = Math.ceil(g.cores.length / 2);
+      return [{ ...g, cores: g.cores.slice(0, half) }, { ...g, name: "", tag: null, vcache: false, temp_key: null, cores: g.cores.slice(half) }];
+    });
     const layout = groups.map((g) => `${g.name}:${g.cores.join(",")}`).join("|");
     if (host.dataset.layout !== layout) {
       host.dataset.layout = layout;
@@ -530,15 +536,15 @@
         const name = String(g.name).replace(/^CCD/, "ККД");
         const tag = g.vcache ? '<span class="sv-plate sv-plate--sm">3D-кэш</span>' : "";
         const ids = g.cores;
-        return `<div class="sv-ccd"><div class="sv-sect"><b>${name}</b>${tag}<span>ядра ${ids[0] + 1}–${ids[ids.length - 1] + 1}</span>
+        return `<div class="sv-ccd"><div class="sv-sect">${name ? `<b>${name}</b>` : ""}${tag}<span>ядра ${ids[0] + 1}–${ids[ids.length - 1] + 1}</span>
             <span class="sv-ccd__t" data-gtemp="${g.temp_key || ""}"></span></div>
-          <div class="sv-strip"><div class="sv-rowlab"><span class="sv-edge__n">&nbsp;</span><div class="sv-rowlab__sp"></div>
-              <span class="sv-rowlab__t">ГГц</span><span class="sv-rowlab__t">°C</span></div>${ids.map((id) => `<div class="sv-edge" data-core="${id}">
+          <div class="sv-strip">${ids.map((id) => `<div class="sv-edge" data-core="${id}">
             <span class="sv-edge__n">Я${id + 1}</span>
             <div class="sv-edge__pair"><div class="sv-edge__nums">${EDGE_NUMS}</div><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
-            ${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}
-            ${ind(`core_t_${id}`, 2, 0, "sv-slot--core")}</div>`).join("")}</div></div>`;
-      }).join("") + `</div><div class="sv-cores__legend">шкала со стрелкой — нагрузка, % · светящийся столбик — температура 30–100 °C</div>`;
+            <span class="sv-edge__v">${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}<span class="sv-unit">ГГц</span></span>
+            <span class="sv-edge__v">${ind(`core_t_${id}`, 2, 0, "sv-slot--core")}<span class="sv-unit">°C</span></span></div>`).join("")}</div></div>`;
+      }).join("") + `</div>`;
+      host.title = "Шкала с красной стрелкой — нагрузка ядра, %; светящийся столбик — температура 30–100 °C";
       host.classList.toggle("sv-cores--one", groups.length === 1);
       [...inds.keys()].filter((k) => k.startsWith("core_")).forEach((k) => inds.delete(k));
       host.querySelectorAll("[data-ind]").forEach(mount);
