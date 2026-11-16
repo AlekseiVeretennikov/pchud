@@ -542,7 +542,7 @@
             <span class="sv-edge__n">Я${id + 1}</span>
             <div class="sv-edge__pair"><div class="sv-edge__nums">${EDGE_NUMS}</div><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
             <span class="sv-edge__v">${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}<span class="sv-unit">ГГц</span></span>
-            <span class="sv-edge__v">${ind(`core_t_${id}`, 2, 0, "sv-slot--core")}<span class="sv-unit">°C</span></span></div>`).join("")}</div></div>`;
+            <span class="sv-edge__v">${ind(`core_t_${id}`, 2, 1, "sv-slot--core")}<span class="sv-unit">°C</span></span></div>`).join("")}</div></div>`;
       }).join("") + `</div>`;
       host.title = "Шкала с красной стрелкой — нагрузка ядра, %; светящийся столбик — температура 30–100 °C";
       host.classList.toggle("sv-cores--one", groups.length === 1);
@@ -556,8 +556,8 @@
       const load = c.sleep || c.load == null ? 0 : Math.max(0, Math.min(100, c.load));
       el.querySelector(".sv-edge__ptr").style.bottom = `calc(4px + ${(load / 100).toFixed(3)} * (100% - 8px))`;
       setInd(`core_f_${c.id}`, c.sleep || c.clock == null ? null : c.clock / 1000);
-      const t = c.temp != null ? Math.round(c.temp) : null;
-      setInd(`core_t_${c.id}`, t);
+      const t = c.temp != null ? Number(c.temp) : null;
+      setInd(`core_t_${c.id}`, t);                   // с десятыми: окошко той же ширины, что у частоты
       const tslot = el.querySelector(`[data-ind="core_t_${c.id}"]`);
       if (tslot) tslot.classList.toggle("sv-slot--hot", t != null && t >= CORE_HOT);
       vFill(el.querySelector(".sv-vbar"), t == null ? 0 : ((t - 30) / 70) * 100);

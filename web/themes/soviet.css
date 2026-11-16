@@ -223,11 +223,14 @@ html:not([data-theme="soviet"]) .sv { display: none; }
 .sv-edge__n { font-size: 13px; color: var(--sv-dim); letter-spacing: 0.04em; line-height: 15px; }
 .sv-edge__f { font-family: var(--mono); font-size: 12px; color: var(--sv-label); line-height: 15px; }
 .sv-edge--sleep .sv-edge__f { color: var(--sv-dim); }
-.sv-edge__pair { flex: 1; min-height: 48px; max-height: 140px; display: flex; gap: 4px; justify-content: center; }
-.sv-edge__v { display: inline-flex; align-items: center; gap: 5px; }
-.sv-edge__v .sv-unit { margin-left: 0; font-size: 12px; color: var(--sv-dim); min-width: 24px; }
+/* шкала со столбиком и окошки цифр стоят по одной оси (центр колонки); цифры шкалы
+   вынесены влево, единицы — вправо, чтобы не сдвигать центр */
+.sv-edge__pair { position: relative; flex: 1; min-height: 48px; max-height: 140px; display: flex; gap: 4px; }
+.sv-edge__v { position: relative; display: inline-flex; }
+.sv-edge__v .sv-unit { position: absolute; left: 100%; top: 50%; transform: translateY(-50%); margin-left: 5px;
+  font-size: 12px; color: var(--sv-dim); white-space: nowrap; }
 /* цифры 100 · 50 · 0 слева от шкалы и подписи строк индикаторов слева от полосы */
-.sv-edge__nums { position: relative; flex: none; width: 22px; }
+.sv-edge__nums { position: absolute; right: 100%; top: 0; bottom: 0; width: 22px; margin-right: 4px; }
 .sv-edge__nums b { position: absolute; right: 0; transform: translateY(50%); font-weight: 400; font-size: 11px; line-height: 1; color: var(--sv-label); }
 .sv-edge__face { position: relative; flex: none; width: 30px; border-radius: 2px;
   background:
