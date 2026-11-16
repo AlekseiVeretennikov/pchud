@@ -254,7 +254,8 @@ html[data-sv-still] .sv-edge__ptr { transition: bottom 0.7s ease-out; }
 .sv-recs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; }
 .sv-card--cpu .sv-recs, .sv-card--gpu .sv-recs { flex: none; }
 .sv-card--cpu .sv-rec__win, .sv-card--gpu .sv-rec__win { flex: none; height: 76px; }
-.sv-memblock { margin: auto 0; }
+/* память — сразу под приборами, на одном уровне с блоком ядер слева */
+.sv-memblock { margin: 0; }
 
 /* температура ядра: вертикальный газоразрядный столбик рядом со шкалой, цвет — как у шкал накопителей */
 .sv-vbar { position: relative; width: 12px; border-radius: 2px; flex: none;
