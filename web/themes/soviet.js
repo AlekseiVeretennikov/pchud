@@ -553,8 +553,7 @@
     dimms.forEach((d) => setInd(`dimm${d.slot}`, d.temp != null ? Math.round(d.temp) : null));
   }
 
-  /* Накопители. Шкала — плоский газоразрядный индикатор на две полосы (как ИН-26):
-     верхняя — заполненность диска, нижняя — активность (чтение и запись).
+  /* Накопители. Шкала — плоский газоразрядный индикатор (как ИН-26): заполненность диска.
      Свечение — отдельными штрихами, погашенные штрихи видны тускло. Меняющиеся числа —
      индикаторами (как «Цифры»), объём диска не меняется — он выбит на щите. */
   const SEG_PITCH = 4;                      // шаг штрихов шкалы, px
@@ -576,7 +575,7 @@
         const total = d.total_gb ? (big(d) ? `${comma((d.total_gb / 1024).toFixed(1))} ТБ` : `${Math.round(d.total_gb)} ГБ`) : "";
         return `<div class="sv-drive" data-letter="${d.letter}">
           <span class="sv-drive__l">${d.letter}</span><span class="sv-drive__k">${d.kind === "HDD" ? "ЖМД" : d.kind === "NVMe" ? "NVMe" : "ТТН"}</span>
-          <div class="sv-bar2" title="Верхняя полоса — заполненность, нижняя — активность диска"><div class="sv-seg"><i></i></div><div class="sv-seg sv-seg--act"><i></i></div></div>
+          <div class="sv-bar2" title="Заполненность диска"><div class="sv-seg"><i></i></div></div>
           <span class="sv-drive__v">${ind(`drv_p_${d.letter}`, 3, 0, "sv-slot--xs")}<span class="sv-unit">%</span></span>
           <span class="sv-drive__v">${ind(`drv_u_${d.letter}`, big(d) ? 2 : 4, big(d) ? 1 : 0, "sv-slot--xs")}<span class="sv-drive__tot">из ${total}</span></span>
           <span class="sv-drive__v">${ind(`drv_t_${d.letter}`, 2, 0, "sv-slot--xs")}<span class="sv-unit">°C</span></span></div>`;
@@ -592,10 +591,7 @@
       const row = host.querySelector(`[data-letter="${d.letter}"]`);
       if (!row) continue;
       const p = d.used_pct != null ? Math.max(0, Math.min(100, d.used_pct)) : null;
-      const act = d.activity_pct != null ? Math.max(0, Math.min(100, d.activity_pct)) : 0;
-      const [segUsed, segAct] = row.querySelectorAll(".sv-seg");
-      segFill(segUsed, p);
-      segFill(segAct, Math.sqrt(act / 100) * 100);     // малая активность тоже заметна
+      segFill(row.querySelector(".sv-seg"), p);
       const t = d.temp != null ? Math.round(d.temp) : null;
       const [amber, red] = d.kind === "HDD" ? [45, 55] : [60, 75];
       if (t != null) hot = Math.max(hot, t >= red ? 2 : t >= amber ? 1 : 0);
