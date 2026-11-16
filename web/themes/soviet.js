@@ -433,6 +433,8 @@
         : readout("gpu_clock", "Частота", "МГц", 4) + readout("vram_clock", "Частота памяти", "МГц", 5)}</div>
     </div>`;
   }
+  const mbItem = (id, label, unit, digits, frac = 0) =>
+    `<span class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
   function memHtml(id, plate) {
     return `<div class="sv-mem">
       <div class="sv-mem__row"><span class="sv-plate sv-plate--sm">${plate}</span>
@@ -454,8 +456,8 @@
       <div class="sv-head"><span class="sv-plate">ЦП</span><span class="sv-name" data-name="cpu">—</span>${lampPair("cpu", "ЦП")}</div>
       ${meterRow("cpu")}
       <div class="sv-cores" data-cores></div>
-      <div class="sv-sect sv-sect--foot"><b>МП</b> материнская плата</div>
-      <div class="sv-recs">${recHtml("vrm", "VRM · MOS", "°C", 3)}${recHtml("chipset", "Чипсет", "°C", 3)}${recHtml("sys", "Система", "°C", 3)}</div>
+      <div class="sv-sect"><b>МП</b> материнская плата</div>
+      <div class="sv-mbrow">${mbItem("vrm", "VRM", "°C", 3)}${mbItem("chipset", "Чипсет", "°C", 3)}${mbItem("sys", "Система", "°C", 2)}${mbItem("soc", "SoC", "В", 1, 3)}${mbItem("pump", "Помпа", "об/мин", 4)}${mbItem("fans", "Вент.", "об/мин", 4)}</div>
     </section>
     <section class="sv-card sv-card--gpu">${screws}
       <div class="sv-head"><span class="sv-plate">ГП</span><span class="sv-name" data-name="gpu">—</span>${lampPair("gpu", "ГП")}</div>
@@ -505,6 +507,15 @@
   }
 
   /* ── ядра: профильные приборы по группам (ККД) ─────────── */
+  const CORE_HOT = 80;                       // с этой температуры цифры ядра краснеют
+  // вертикальный газоразрядный столбик: светятся штрихи снизу до уровня (0…100 %)
+  function vFill(bar, pct) {
+    if (!bar) return;
+    const h = bar.clientHeight - 6;
+    if (h <= 0) return;
+    const n = Math.floor(h / SEG_PITCH);
+    bar.firstChild.style.height = `${Math.round((Math.max(0, Math.min(100, pct)) / 100) * n) * SEG_PITCH}px`;
+  }
   function renderCores(cores, groups, m) {
     const host = $("[data-cores]");
     if (!cores || !cores.length) { host.hidden = true; return; }
@@ -513,7 +524,7 @@
     const layout = groups.map((g) => `${g.name}:${g.cores.join(",")}`).join("|");
     if (host.dataset.layout !== layout) {
       host.dataset.layout = layout;
-      host.innerHTML = groups.map((g) => {
+      host.innerHTML = `<div class="sv-cores__row">` + groups.map((g) => {
         const name = String(g.name).replace(/^CCD/, "ККД");
         const tag = g.vcache ? '<span class="sv-plate sv-plate--sm">3D-кэш</span>' : "";
         const ids = g.cores;
@@ -521,10 +532,13 @@
             <span class="sv-ccd__t" data-gtemp="${g.temp_key || ""}"></span></div>
           <div class="sv-strip">${ids.map((id) => `<div class="sv-edge" data-core="${id}">
             <span class="sv-edge__n">Я${id + 1}</span>
-            <div class="sv-edge__face"><i class="sv-edge__ptr"></i></div>
-            <span class="sv-edge__f">--</span></div>`).join("")}</div></div>`;
-      }).join("");
+            <div class="sv-edge__pair"><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
+            ${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}
+            ${ind(`core_t_${id}`, 2, 0, "sv-slot--core")}</div>`).join("")}</div></div>`;
+      }).join("") + `</div><div class="sv-cores__legend">шкала — нагрузка 0–100 % · столбик — температура 30–100 °C · под ними частота, ГГц, и температура, °C</div>`;
       host.classList.toggle("sv-cores--one", groups.length === 1);
+      [...inds.keys()].filter((k) => k.startsWith("core_")).forEach((k) => inds.delete(k));
+      host.querySelectorAll("[data-ind]").forEach(mount);
     }
     for (const c of cores) {
       const el = host.querySelector(`[data-core="${c.id}"]`);
@@ -532,7 +546,12 @@
       el.classList.toggle("sv-edge--sleep", !!c.sleep);
       const load = c.sleep || c.load == null ? 0 : Math.max(0, Math.min(100, c.load));
       el.querySelector(".sv-edge__ptr").style.bottom = `calc(4px + ${(load / 100).toFixed(3)} * (100% - 8px))`;
-      setText(el.querySelector(".sv-edge__f"), c.sleep ? "сон" : c.clock != null ? comma((c.clock / 1000).toFixed(2)) : "--");
+      setInd(`core_f_${c.id}`, c.sleep || c.clock == null ? null : c.clock / 1000);
+      const t = c.temp != null ? Math.round(c.temp) : null;
+      setInd(`core_t_${c.id}`, t);
+      const tslot = el.querySelector(`[data-ind="core_t_${c.id}"]`);
+      if (tslot) tslot.classList.toggle("sv-slot--hot", t != null && t >= CORE_HOT);
+      vFill(el.querySelector(".sv-vbar"), t == null ? 0 : ((t - 30) / 70) * 100);
       el.title = `Ядро ${c.id + 1}: ${c.sleep ? "спит" : `${Math.round(load)} %`}${c.temp != null ? `, ${Math.round(c.temp)} °C` : ""}`;
     }
     host.querySelectorAll("[data-gtemp]").forEach((el) => {
@@ -661,18 +680,20 @@
 
     renderCores(snap.cores || [], snap.core_groups, m);
 
-    // материнская плата
-    const mb = snap.mb_history || {};
-    const soc = num(m.soc_volt);
-    setRec("vrm", mb.vrm, { len: 600, smooth: 4 }, num(m.vrm_temp) != null ? Math.round(num(m.vrm_temp)) : null,
-      soc != null ? `SoC ${comma(soc.toFixed(3))} В · ${minmax(mb.vrm)}` : minmax(mb.vrm));
-    const chB = num(m.chipset_board_temp);
-    setRec("chipset", mb.chipset, { len: 600, smooth: 4 }, num(m.chipset_temp) != null ? Math.round(num(m.chipset_temp)) : null,
-      chB != null ? `у платы ${Math.round(chB)} °C · ${minmax(mb.chipset)}` : minmax(mb.chipset));
-    const fans = [m.fan_sys1, m.fan_sys2, m.fan_sys3].map(num).filter((v) => v > 0).map(Math.round);
+    // материнская плата: одна строка индикаторов; помпа и вентиляторы — если есть
+    const rnd = (v) => (v == null ? null : Math.round(v));
+    setInd("mb_vrm", rnd(num(m.vrm_temp)));
+    setInd("mb_chipset", rnd(num(m.chipset_temp)));
+    setInd("mb_sys", rnd(num(m.mobo_temp)));
+    setInd("mb_soc", num(m.soc_volt));
     const pump = num(m.pump_rpm);
-    const sysSub = [pump > 0 ? `помпа ${Math.round(pump)}` : "", fans.length ? `вент. ${fans.join(" ")}` : ""].filter(Boolean).join(" · ");
-    setRec("sys", mb.sys, { len: 600, smooth: 4 }, num(m.mobo_temp) != null ? Math.round(num(m.mobo_temp)) : null, sysSub || minmax(mb.sys));
+    const fans = [m.fan_sys1, m.fan_sys2, m.fan_sys3].map(num).filter((v) => v > 0);
+    setInd("mb_pump", pump > 0 ? Math.round(pump) : null);
+    setInd("mb_fans", fans.length ? Math.round(Math.max(...fans)) : null);
+    $('[data-mbi="pump"]').hidden = !(pump > 0);
+    $('[data-mbi="fans"]').hidden = !fans.length;
+    $('[data-mbi="soc"]').hidden = num(m.soc_volt) == null;
+    $('[data-mbi="fans"]').title = fans.length ? `вентиляторы корпуса: ${fans.map(Math.round).join(", ")} об/мин` : "";
 
     // память
     const vramUsed = num(m.vram_used), vramTotal = Number(snap.vram_total_gb) || null;
