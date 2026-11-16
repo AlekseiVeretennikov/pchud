@@ -435,14 +435,7 @@
   }
   const mbItem = (id, label, unit, digits, frac = 0) =>
     `<span class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
-  function memHtml(id, plate) {
-    return `<div class="sv-mem">
-      <div class="sv-mem__row"><span class="sv-plate sv-plate--sm">${plate}</span>
-        ${ind(`${id}_pct`, 3)}<span class="sv-unit">%</span>
-        <span class="sv-mem__extra" data-sub="${id}_extra"></span></div>
-      <div class="sv-hbar" data-hbar="${id}"><b></b><u></u></div>
-      <div class="sv-mem__sub" data-sub="${id}">&nbsp;</div></div>`;
-  }
+
 
   function build() {
     const hud = document.querySelector(".hud");
@@ -464,7 +457,7 @@
       ${meterRow("gpu")}
       <div class="sv-memblock">
         <div class="sv-sect"><b>ОЗУ</b> память</div>
-        <div class="sv-mems">${memHtml("vram", "Видео")}${memHtml("ram", "ОЗУ")}</div>
+        <div class="sv-mems" data-mems></div>
         <div class="sv-dimms" data-dimms></div>
       </div>
       <div class="sv-sect sv-sect--foot"><b>ГП</b> термики и охлаждение</div>
@@ -570,16 +563,45 @@
     });
   }
 
+  /* Память — как накопители: плоская газоразрядная шкала с рисками 0…100, справа
+     процент, сколько занято (объём — выбит на щите) и одно дополнительное значение:
+     у видеопамяти — нагрузка контроллера, у ОЗУ — сколько свободно. Строки собираются
+     по данным: у ОЗУ от 100 ГБ окошку «занято» нужен третий разряд. */
+  function renderMem(rows) {
+    const host = $("[data-mems]");
+    const layout = rows.map((r) => `${r.id}:${r.digits}:${r.total ?? ""}`).join("|");
+    if (host.dataset.layout !== layout) {
+      host.dataset.layout = layout;
+      [...inds.keys()].filter((k) => k.startsWith("mem_")).forEach((k) => inds.delete(k));
+      host.innerHTML = rows.map((r) => `<div class="sv-memrow">
+          <span class="sv-plate sv-plate--sm">${r.plate}</span>
+          <div class="sv-memrow__bar"><div class="sv-bar2"><div class="sv-seg sv-seg--mem"><i></i></div></div>
+            <div class="sv-ticks"></div><div class="sv-ticknums"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div></div>
+          <span class="sv-edge__v">${ind(`mem_p_${r.id}`, 3)}<span class="sv-unit">%</span></span>
+          <span class="sv-edge__v">${ind(`mem_u_${r.id}`, r.digits, 1)}<span class="sv-unit">из ${r.total != null ? comma(r.total.toFixed(1)) : "--"} ГБ</span></span>
+          <span class="sv-edge__v"><span class="sv-cap">${r.extraLabel}</span>${ind(`mem_x_${r.id}`, r.extraDigits, r.extraFrac)}<span class="sv-unit">${r.extraUnit}</span></span>
+        </div>`).join("");
+      host.querySelectorAll("[data-ind]").forEach(mount);
+    }
+    for (const r of rows) {
+      const row = host.querySelector(`[data-ind="mem_p_${r.id}"]`)?.closest(".sv-memrow");
+      if (row) segFill(row.querySelector(".sv-seg"), r.pct);
+      setInd(`mem_p_${r.id}`, r.pct != null ? Math.round(r.pct) : null);
+      setInd(`mem_u_${r.id}`, r.used);
+      setInd(`mem_x_${r.id}`, r.extra);
+    }
+  }
+
   function renderDimms(dimms) {
     const host = $("[data-dimms]");
     const slots = dimms.map((d) => d.slot).join(",");
     if (host.dataset.slots !== slots) {
       host.dataset.slots = slots;
       host.innerHTML = dimms.length ? `<span class="sv-cap">Планки</span>` + dimms.map((d) =>
-        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span>${ind(`dimm${d.slot}`, 2, 0, "sv-slot--sm")}<span class="sv-unit">°C</span></span>`).join("") : "";
+        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span>${ind(`dimm${d.slot}`, 2, 1, "sv-slot--sm")}<span class="sv-unit">°C</span></span>`).join("") : "";
       host.querySelectorAll("[data-ind]").forEach(mount);
     }
-    dimms.forEach((d) => setInd(`dimm${d.slot}`, d.temp != null ? Math.round(d.temp) : null));
+    dimms.forEach((d) => setInd(`dimm${d.slot}`, d.temp != null ? Number(d.temp) : null));
   }
 
   /* Накопители. Шкала — плоский газоразрядный индикатор (как ИН-26): заполненность диска.
@@ -643,13 +665,7 @@
     if (warn) warn.dataset.on = lv >= 1 ? "1" : "0";
     if (crit) crit.dataset.on = lv >= 2 ? "2" : "0";
   }
-  // лента ленточного указателя: залита до отметки
-  function fill(bar, pct) {
-    if (!bar) return;
-    const p = Math.max(0, Math.min(100, pct ?? 0));
-    bar.querySelector("b").style.width = `${p}%`;
-    bar.querySelector("u").style.left = `calc(${p}% - 1.5px)`;
-  }
+
   const level = (v, [a, r]) => (v == null ? 0 : v >= r ? 2 : v >= a ? 1 : 0);
 
   function setRec(id, hist, cfg, value, sub) {
@@ -711,15 +727,14 @@
     const ramUsed = num(m.ram_used), ramAvail = num(m.ram_avail);
     const ramTotal = ramUsed != null && ramAvail != null ? ramUsed + ramAvail : null;
     const ramPct = num(m.ram_load) ?? (ramTotal ? (ramUsed / ramTotal) * 100 : null);
-    const mem = (id, pct, used, total, extra) => {
-      setInd(`${id}_pct`, pct != null ? Math.round(pct) : null);
-      fill($(`[data-hbar="${id}"]`), pct);
-      setText($(`[data-sub="${id}"]`), used != null ? `занято ${comma(used.toFixed(1))} из ${total != null ? comma(Number(total).toFixed(1)) : "--"} ГБ` : " ");
-      setText($(`[data-sub="${id}_extra"]`), extra);
-    };
     const ctrl = num(m.vram_ctrl_load);
-    mem("vram", vramPct, vramUsed, vramTotal, ctrl != null ? `контроллер ${Math.round(ctrl)} %` : "");
-    mem("ram", ramPct, ramUsed, ramTotal, ramAvail != null ? `свободно ${comma(ramAvail.toFixed(1))} ГБ` : "");
+    const dig = (total) => (total != null && total >= 99.95 ? 3 : 2);
+    renderMem([
+      { id: "vram", plate: "Видео", pct: vramPct, used: vramUsed, total: vramTotal, digits: dig(vramTotal),
+        extraLabel: "контр.", extra: ctrl != null ? Math.round(ctrl) : null, extraDigits: 3, extraFrac: 0, extraUnit: "%" },
+      { id: "ram", plate: "ОЗУ", pct: ramPct, used: ramUsed, total: ramTotal != null ? Math.round(ramTotal * 10) / 10 : null, digits: dig(ramTotal),
+        extraLabel: "своб.", extra: ramAvail, extraDigits: dig(ramTotal), extraFrac: 1, extraUnit: "ГБ" },
+    ]);
     renderDimms(snap.dimms || []);
 
     // термики ГП
