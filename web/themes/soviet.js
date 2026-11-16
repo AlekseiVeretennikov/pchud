@@ -10,10 +10,13 @@
   const NS = "http://www.w3.org/2000/svg";
   const FRAME_MS = 33;                       // ~30 кадров/с, как у счёта чисел в app.js
   const INKS = { violet: "#3b2a86", red: "#a3241c", green: "#1f6b34", blue: "#1d4f9a" };
+  // лучи осциллографа: основной — зелёный люминофор, у многолучевого — ещё янтарный и голубой
+  const BEAMS = { violet: "125,255,150", red: "255,196,90", green: "110,215,255", blue: "125,255,150" };
+  const SCOPE = "125,255,150";
   // пороги лампочек перегрева: [жёлтая, красная мигающая]
   const LAMP = { cpu: [80, 90], gpu: [80, 88], hotspot: [90, 100] };
 
-  let opts = { overshoot: true, paper: "bright", ink: "violet", lamps: true };
+  let opts = { overshoot: true, rec: "paper", paper: "bright", ink: "violet", lamps: true };
   let built = false, tick = 0, root = null;
   const S = {};                              // приборы и барабаны после build()
   const $ = (sel) => root.querySelector(sel);
@@ -293,7 +296,7 @@
   function drawRecorder(canvas, hist, cfg, f = 0) {
     const { len } = cfg;
     // одно перо (hist + шкала из cfg) или несколько — у каждого своя шкала и цвет чернил
-    const series = cfg.series || [{ hist, lo: cfg.lo, hi: cfg.hi, minSpan: cfg.minSpan, smooth: cfg.smooth, color: null }];
+    const series = cfg.series || [{ hist, lo: cfg.lo, hi: cfg.hi, minSpan: cfg.minSpan, smooth: cfg.smooth, ink: null }];
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
     if (!W || !H) return;
@@ -303,6 +306,7 @@
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const dim = opts.paper === "dim";
+    if (opts.rec === "scope") return drawScope(ctx, W, H, series, cfg.len, f, dim);
     ctx.fillStyle = dim ? "#9d977f" : "#f2ecd9";
     ctx.fillRect(0, 0, W, H);
 
@@ -332,7 +336,7 @@
     }
 
     // каретка — общая, перья — у каждой линии своё
-    const pens = series.map((sr) => plotPen(ctx, sr, { n, H, X, dim, plotW }));
+    const pens = series.map((sr) => plotPen(ctx, sr, { n, H, X, dim, plotW, scope: false }));
     ctx.fillStyle = "#151513";
     ctx.fillRect(plotW, 0, PEN, H);
     pens.forEach(({ py, color }, i) => {
@@ -346,7 +350,7 @@
   }
 
   // одно перо: сглаживание, шкала, кривая; возвращает высоту пера у края бумаги
-  function plotPen(ctx, { hist, lo, hi, minSpan = 10, smooth = 0, color }, { n, H, X, dim, plotW }) {
+  function plotPen(ctx, { hist, lo, hi, minSpan = 10, smooth = 0, ink: inkName }, { n, H, X, dim, plotW, scope }) {
     const pad = 0.12;
     let data = (hist || []).slice(-n).map((v) => (v == null || Number.isNaN(v) ? null : v));
     const known = data.filter((v) => v != null);
@@ -375,8 +379,33 @@
     const off = n - data.length;
     const pts = [];
     data.forEach((v, i) => { if (v != null) pts.push([X(off + i), Y(v)]); });
-    const ink = color || INKS[opts.ink] || INKS.violet;
-    if (pts.length > 1) {
+    const ink = INKS[inkName || opts.ink] || INKS.violet;
+    const beam = inkName ? BEAMS[inkName] : SCOPE;
+    if (scope && pts.length > 1) {
+      // послесвечение: левая (старая) часть следа тусклее, у точки луча — ярче всего
+      const fade = (k) => {
+        const g = ctx.createLinearGradient(0, 0, plotW, 0);
+        g.addColorStop(0, `rgba(${beam},${0.25 * k})`);
+        g.addColorStop(0.7, `rgba(${beam},${0.6 * k})`);
+        g.addColorStop(1, `rgba(${beam},${k})`);
+        return g;
+      };
+      const path = () => {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length - 1; i++) {
+          ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+        }
+        ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+      };
+      const k = dim ? 0.6 : 1;
+      ctx.lineJoin = "round"; ctx.lineCap = "round";
+      ctx.shadowColor = `rgba(${beam},${0.9 * k})`;
+      ctx.shadowBlur = 7;
+      path(); ctx.strokeStyle = fade(0.55 * k); ctx.lineWidth = 3; ctx.stroke();
+      ctx.shadowBlur = 0;
+      path(); ctx.strokeStyle = fade(k); ctx.lineWidth = 1.3; ctx.stroke();
+    } else if (pts.length > 1) {
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length - 1; i++) {
@@ -395,7 +424,66 @@
       const p = pts[pts.length - 2], q = pts[pts.length - 1];
       py = q[0] === p[0] ? q[1] : p[1] + (q[1] - p[1]) * Math.max(0, Math.min(1, (plotW - p[0]) / (q[0] - p[0])));
     } else if (pts.length) py = pts[0][1];
-    return { py, color: ink };
+    return { py, color: ink, beam };
+  }
+
+  /* ── осциллограф: экран с зелёным люминофором, неподвижная сетка-градуировка
+     (10 делений по горизонтали, 6 по вертикали, с рисками на центральных осях),
+     след луча едет справа налево, яркая точка луча — у правого края экрана ── */
+  function drawScope(ctx, W, H, series, len, f, dim) {
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
+    bg.addColorStop(0, dim ? "#0a1610" : "#0f2318");
+    bg.addColorStop(1, "#040806");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    const BEAM = 5;                                   // поле справа: точка луча не упирается в рамку
+    const filled = Math.max(...series.map((sr) => (sr.hist || []).length));
+    const n = Math.max(2, Math.min(len, Math.max(60, filled)));
+    const plotW = W - BEAM, step = plotW / (n - 1);
+    const X = (i) => (i + 1 - f) * step;
+
+    // градуировка нанесена на стекло — не едет
+    const gr = dim ? "120,190,150" : "150,220,175";
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = `rgba(${gr},0.14)`;
+    for (let k = 1; k < 10; k++) {
+      const x = Math.round((W * k) / 10) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let k = 1; k < 6; k++) {
+      const y = Math.round((H * k) / 6) + 0.5;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    // центральные оси — с мелкими рисками через 1/5 деления
+    ctx.strokeStyle = `rgba(${gr},0.3)`;
+    const cx = Math.round(W / 2) + 0.5, cy = Math.round(H / 2) + 0.5;
+    for (let k = 1; k < 50; k++) {
+      const x = Math.round((W * k) / 50) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, cy - 2); ctx.lineTo(x, cy + 2); ctx.stroke();
+    }
+    for (let k = 1; k < 30; k++) {
+      const y = Math.round((H * k) / 30) + 0.5;
+      ctx.beginPath(); ctx.moveTo(cx - 2, y); ctx.lineTo(cx + 2, y); ctx.stroke();
+    }
+
+    const beams = series.map((sr) => plotPen(ctx, sr, { n, H, X, dim, plotW, scope: true }));
+    // точка луча: белёсое ядро в ореоле цвета люминофора
+    beams.forEach(({ py, beam }) => {
+      ctx.shadowColor = `rgba(${beam},1)`;
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = dim ? `rgba(${beam},0.9)` : "rgba(235,255,240,0.95)";
+      ctx.beginPath(); ctx.arc(plotW, py, 2.2, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+
+    // выпуклое стекло трубки: затемнение к углам и блик
+    const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    const gl = ctx.createLinearGradient(0, 0, W * 0.5, H);
+    gl.addColorStop(0, "rgba(255,255,255,0.07)"); gl.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
   }
 
   /* Самописцы с окном в минуту (сеть, кадры) перерисовываются каждый кадр — лента
@@ -448,7 +536,7 @@
   }
   // пункт строки с цветной меткой пера общего самописца
   const penItem = (id, label, unit, digits, frac, ink) =>
-    `<span class="sv-mbi" data-mbi="${id}"><i class="sv-pen" style="--ink:${INKS[ink]}"></i><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
+    `<span class="sv-mbi" data-mbi="${id}"><i class="sv-pen" style="--ink:${INKS[ink]};--beam:rgb(${BEAMS[ink]})"></i><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
   const mbItem = (id, label, unit, digits, frac = 0) =>
     `<span class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
 
@@ -779,9 +867,9 @@
     const fanHist = gh.fan || [];
     const bus = num(m.bus_load), pcie = num(m.pcie_speed);
     drawRecorder($('[data-canvas="gputherm"]'), null, { len: 600, series: [
-      { hist: gh.hotspot, smooth: 4, minSpan: 10, color: INKS.violet },
-      { hist: fanHist, smooth: 4, lo: 0, hi: Math.max(2000, ...fanHist), color: INKS.red },
-      { hist: gh.bus, smooth: 8, lo: 0, hi: 100, color: INKS.green },
+      { hist: gh.hotspot, smooth: 4, minSpan: 10, ink: "violet" },
+      { hist: fanHist, smooth: 4, lo: 0, hi: Math.max(2000, ...fanHist), ink: "red" },
+      { hist: gh.bus, smooth: 8, lo: 0, hi: 100, ink: "green" },
     ] });
     setInd("mb_hotspot", hs);
     setInd("mb_fan", gfans.length ? Math.max(...gfans) : null);
@@ -823,7 +911,7 @@
     name: "Приборная панель",
     description: "Щит приборов в советском духе: стрелки, барабанные счётчики, самописцы и лампочки перегрева",
     preview: "themes/previews/soviet.jpg",
-    defaults: { case: "enamel", digits: "drum", overshoot: true, paper: "bright", ink: "violet", lamps: true },
+    defaults: { case: "enamel", digits: "drum", overshoot: true, rec: "paper", paper: "bright", ink: "violet", lamps: true },
     sections: [
       { title: "Корпус", items: [
         { key: "case", type: "choice", options: [["enamel", "Эмаль", "#56635b"], ["bakelite", "Карболит", "#2a201a"]],
@@ -841,9 +929,11 @@
           hint: "жёлтая «Внимание» с 80 °C, красная «Перегрев» мигает с 90 °C (у ГП — с 88 °C или горячая точка с 100 °C)" },
       ] },
       { title: "Самописцы", items: [
-        { key: "paper", type: "choice", label: "Лента", options: [["bright", "Светлая"], ["dim", "Тусклая"]],
-          hint: "тусклая не так бросается в глаза в темноте" },
-        { key: "ink", type: "choice", label: "Чернила", vertical: false, options: [
+        { key: "rec", type: "choice", label: "Вид", options: [["paper", "Ленточный самописец"], ["scope", "Осциллограф"]],
+          hint: "самописец пишет чернилами по бумажной ленте, осциллограф рисует светящимся лучом по экрану трубки" },
+        { key: "paper", type: "choice", label: "Яркость", options: [["bright", "Светлая"], ["dim", "Тусклая"]],
+          hint: "тусклая лента или приглушённый луч не так бросаются в глаза в темноте" },
+        { key: "ink", type: "choice", label: "Чернила", vertical: false, hint: "только у самописца: луч осциллографа — зелёный", options: [
           ["violet", "", INKS.violet], ["red", "", INKS.red], ["green", "", INKS.green], ["blue", "", INKS.blue]] },
       ] },
     ],
@@ -859,9 +949,12 @@
       const html = document.documentElement;
       html.dataset.svCase = settings.case;
       html.dataset.svDigits = settings.digits;
+      html.dataset.svRec = settings.rec;
       if (settings.overshoot) delete html.dataset.svStill; else html.dataset.svStill = "";
       if (built) {
         // лампочки и самописцы перерисуются на следующем снимке, стрелки — сразу
+        // самописцы — сразу в новом виде, не дожидаясь снимка
+        for (const [canvas, r] of recs) drawRecorder(canvas, r.hist, r.cfg, 0);
         if (!opts.lamps) root.querySelectorAll("[data-lamp]").forEach((el) => { if (el.dataset.lamp !== "fps") el.dataset.on = "0"; });
       }
     },
