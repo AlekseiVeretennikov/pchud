@@ -10,9 +10,16 @@
   const NS = "http://www.w3.org/2000/svg";
   const FRAME_MS = 33;                       // ~30 кадров/с, как у счёта чисел в app.js
   const INKS = { violet: "#3b2a86", red: "#a3241c", green: "#1f6b34", blue: "#1d4f9a" };
-  // лучи осциллографа: основной — зелёный люминофор, у многолучевого — ещё янтарный и голубой
-  const BEAMS = { violet: "125,255,150", red: "255,196,90", green: "110,215,255", blue: "125,255,150" };
-  const SCOPE = "125,255,150";
+  /* Осциллограф светится тем же, чем и цифры: при люминесцентных — бирюзой ИВ-11,
+     при барабанах и газоразрядных лампах — оранжевым неоном, как шкалы накопителей.
+     main — луч одиночного окна; violet/red/green — три луча окна ГП (по чернилам перьев). */
+  const SCOPES = {
+    neon: { main: "255,150,70", violet: "255,150,70", red: "255,222,130", green: "255,95,85",
+            bg: ["#24140b", "#0a0604"], bgDim: "#180d07", grid: "235,170,120", gridDim: "190,130,90" },
+    vfd:  { main: "111,240,210", violet: "111,240,210", red: "125,170,255", green: "215,235,255",
+            bg: ["#0b2220", "#030a09"], bgDim: "#081816", grid: "150,225,210", gridDim: "110,180,165" },
+  };
+  const scopeKit = () => SCOPES[opts.digits === "vfd" ? "vfd" : "neon"];
   // пороги лампочек перегрева: [жёлтая, красная мигающая]
   const LAMP = { cpu: [80, 90], gpu: [80, 88], hotspot: [90, 100] };
 
@@ -380,7 +387,8 @@
     const pts = [];
     data.forEach((v, i) => { if (v != null) pts.push([X(off + i), Y(v)]); });
     const ink = INKS[inkName || opts.ink] || INKS.violet;
-    const beam = inkName ? BEAMS[inkName] : SCOPE;
+    const kit = scopeKit();
+    const beam = (inkName && kit[inkName]) || kit.main;
     if (scope && pts.length > 1) {
       // послесвечение: левая (старая) часть следа тусклее, у точки луча — ярче всего
       const fade = (k) => {
@@ -431,9 +439,10 @@
      (10 делений по горизонтали, 6 по вертикали, с рисками на центральных осях),
      след луча едет справа налево, яркая точка луча — у правого края экрана ── */
   function drawScope(ctx, W, H, series, len, f, dim) {
+    const kit = scopeKit();
     const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
-    bg.addColorStop(0, dim ? "#0a1610" : "#0f2318");
-    bg.addColorStop(1, "#040806");
+    bg.addColorStop(0, dim ? kit.bgDim : kit.bg[0]);
+    bg.addColorStop(1, kit.bg[1]);
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
 
@@ -444,7 +453,7 @@
     const X = (i) => (i + 1 - f) * step;
 
     // градуировка нанесена на стекло — не едет
-    const gr = dim ? "120,190,150" : "150,220,175";
+    const gr = dim ? kit.gridDim : kit.grid;
     ctx.lineWidth = 1;
     ctx.strokeStyle = `rgba(${gr},0.14)`;
     for (let k = 1; k < 10; k++) {
@@ -468,11 +477,11 @@
     }
 
     const beams = series.map((sr) => plotPen(ctx, sr, { n, H, X, dim, plotW, scope: true }));
-    // точка луча: белёсое ядро в ореоле цвета люминофора
+    // точка луча: белёсое ядро в ореоле цвета луча
     beams.forEach(({ py, beam }) => {
       ctx.shadowColor = `rgba(${beam},1)`;
       ctx.shadowBlur = 10;
-      ctx.fillStyle = dim ? `rgba(${beam},0.9)` : "rgba(235,255,240,0.95)";
+      ctx.fillStyle = dim ? `rgba(${beam},0.9)` : "rgba(255,250,240,0.95)";
       ctx.beginPath(); ctx.arc(plotW, py, 2.2, 0, Math.PI * 2); ctx.fill();
     });
     ctx.shadowBlur = 0;
@@ -536,7 +545,7 @@
   }
   // пункт строки с цветной меткой пера общего самописца
   const penItem = (id, label, unit, digits, frac, ink) =>
-    `<span class="sv-mbi" data-mbi="${id}"><i class="sv-pen" style="--ink:${INKS[ink]};--beam:rgb(${BEAMS[ink]})"></i><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
+    `<span class="sv-mbi" data-mbi="${id}"><i class="sv-pen" data-ink="${ink}" style="--ink:${INKS[ink]};--beam:rgb(${scopeKit()[ink]})"></i><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
   const mbItem = (id, label, unit, digits, frac = 0) =>
     `<span class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
 
@@ -933,7 +942,7 @@
           hint: "самописец пишет чернилами по бумажной ленте, осциллограф рисует светящимся лучом по экрану трубки" },
         { key: "paper", type: "choice", label: "Яркость", options: [["bright", "Светлая"], ["dim", "Тусклая"]],
           hint: "тусклая лента или приглушённый луч не так бросаются в глаза в темноте" },
-        { key: "ink", type: "choice", label: "Чернила", vertical: false, hint: "только у самописца: луч осциллографа — зелёный", options: [
+        { key: "ink", type: "choice", label: "Чернила", vertical: false, hint: "только у самописца: осциллограф светится в цвет цифр — бирюзой у люминесцентных, оранжевым у остальных", options: [
           ["violet", "", INKS.violet], ["red", "", INKS.red], ["green", "", INKS.green], ["blue", "", INKS.blue]] },
       ] },
     ],
@@ -953,6 +962,7 @@
       if (settings.overshoot) delete html.dataset.svStill; else html.dataset.svStill = "";
       if (built) {
         // лампочки и самописцы перерисуются на следующем снимке, стрелки — сразу
+        root.querySelectorAll(".sv-pen").forEach((p) => p.style.setProperty("--beam", `rgb(${scopeKit()[p.dataset.ink]})`));
         // самописцы — сразу в новом виде, не дожидаясь снимка
         for (const [canvas, r] of recs) drawRecorder(canvas, r.hist, r.cfg, 0);
         if (!opts.lamps) root.querySelectorAll("[data-lamp]").forEach((el) => { if (el.dataset.lamp !== "fps") el.dataset.on = "0"; });
