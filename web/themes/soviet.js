@@ -553,19 +553,36 @@
     dimms.forEach((d) => setInd(`dimm${d.slot}`, d.temp != null ? Math.round(d.temp) : null));
   }
 
+  /* Накопители. Шкала — плоский газоразрядный индикатор на две полосы (как ИН-26):
+     верхняя — заполненность диска, нижняя — активность (чтение и запись).
+     Свечение — отдельными штрихами, погашенные штрихи видны тускло. Меняющиеся числа —
+     индикаторами (как «Цифры»), объём диска не меняется — он выбит на щите. */
+  const SEG_PITCH = 4;                      // шаг штрихов шкалы, px
+  function segFill(bar, pct) {
+    const w = bar.clientWidth;
+    if (!w) return;
+    const n = Math.floor(w / SEG_PITCH);
+    bar.firstChild.style.width = `${Math.round((Math.max(0, Math.min(100, pct || 0)) / 100) * n) * SEG_PITCH}px`;
+  }
   function renderDrives(drives) {
     const host = $("[data-drives]");
     const list = drives || [];
-    const layout = list.map((d) => `${d.kind} ${d.letter} ${d.name}`).join("|");
+    const big = (d) => (d.total_gb || 0) >= 10000;          // от 10 ТБ — в терабайтах
+    const layout = list.map((d) => `${d.kind} ${d.letter} ${d.name} ${big(d)} ${Math.round(d.total_gb || 0)}`).join("|");
     if (host.dataset.layout !== layout) {
       host.dataset.layout = layout;
-      host.innerHTML = list.length ? list.map((d) => `<div class="sv-drive" data-letter="${d.letter}">
+      [...inds.keys()].filter((k) => k.startsWith("drv_")).forEach((k) => inds.delete(k));
+      host.innerHTML = list.length ? list.map((d) => {
+        const total = d.total_gb ? (big(d) ? `${comma((d.total_gb / 1024).toFixed(1))} ТБ` : `${Math.round(d.total_gb)} ГБ`) : "";
+        return `<div class="sv-drive" data-letter="${d.letter}">
           <span class="sv-drive__l">${d.letter}</span><span class="sv-drive__k">${d.kind === "HDD" ? "ЖМД" : d.kind === "NVMe" ? "NVMe" : "ТТН"}</span>
-          <div class="sv-tubebox"><div class="sv-tube"><i></i></div><div class="sv-tubescale"></div></div>
-          <span class="sv-drive__p"></span><span class="sv-drive__s"></span>
-          <span class="sv-neon" title="Активность диска: чем ярче, тем больше чтения и записи"></span></div>`).join("") +
-        `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чтение</span>${ind("rw_r", 4, 0, "sv-slot--sm")}
-          <span class="sv-cap">Запись</span>${ind("rw_w", 4, 0, "sv-slot--sm")}<span class="sv-unit">МБ/с</span></div>`
+          <div class="sv-bar2" title="Верхняя полоса — заполненность, нижняя — активность диска"><div class="sv-seg"><i></i></div><div class="sv-seg sv-seg--act"><i></i></div></div>
+          <span class="sv-drive__v">${ind(`drv_p_${d.letter}`, 3, 0, "sv-slot--xs")}<span class="sv-unit">%</span></span>
+          <span class="sv-drive__v">${ind(`drv_u_${d.letter}`, big(d) ? 2 : 4, big(d) ? 1 : 0, "sv-slot--xs")}<span class="sv-drive__tot">из ${total}</span></span>
+          <span class="sv-drive__v">${ind(`drv_t_${d.letter}`, 2, 0, "sv-slot--xs")}<span class="sv-unit">°C</span></span></div>`;
+      }).join("") +
+        `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чтение</span>${ind("rw_r", 4, 0, "sv-slot--xs")}
+          <span class="sv-cap">Запись</span>${ind("rw_w", 4, 0, "sv-slot--xs")}<span class="sv-unit">МБ/с</span></div>`
         : '<div class="sv-cap">нет данных</div>';
       host.classList.toggle("sv-drives--dense", list.length > 3);
       host.querySelectorAll("[data-ind]").forEach(mount);
@@ -575,22 +592,23 @@
       const row = host.querySelector(`[data-letter="${d.letter}"]`);
       if (!row) continue;
       const p = d.used_pct != null ? Math.max(0, Math.min(100, d.used_pct)) : null;
-      // газоразрядный шкальный индикатор: столбик свечения длиной в заполненность
-      row.querySelector(".sv-tube i").style.width = `calc((100% - 8px) * ${((p ?? 0) / 100).toFixed(3)})`;
       const act = d.activity_pct != null ? Math.max(0, Math.min(100, d.activity_pct)) : 0;
-      row.querySelector(".sv-neon").style.setProperty("--a", Math.sqrt(act / 100).toFixed(3));
-      setText(row.querySelector(".sv-drive__p"), p != null ? `${Math.round(p)} %` : "");
+      const [segUsed, segAct] = row.querySelectorAll(".sv-seg");
+      segFill(segUsed, p);
+      segFill(segAct, Math.sqrt(act / 100) * 100);     // малая активность тоже заметна
       const t = d.temp != null ? Math.round(d.temp) : null;
       const [amber, red] = d.kind === "HDD" ? [45, 55] : [60, 75];
       if (t != null) hot = Math.max(hot, t >= red ? 2 : t >= amber ? 1 : 0);
-      const size = d.total_gb ? `${gb(d.used_gb)} / ${gb(d.total_gb)}` : "";
-      setText(row.querySelector(".sv-drive__s"), `${size}${t != null ? ` · ${t}°` : ""}`);
+      setInd(`drv_p_${d.letter}`, p != null ? Math.round(p) : null);
+      setInd(`drv_u_${d.letter}`, d.used_gb == null ? null : big(d) ? d.used_gb / 1024 : Math.round(d.used_gb));
+      setInd(`drv_t_${d.letter}`, t);
       r += d.read_mbs || 0; w += d.write_mbs || 0;
     }
     setInd("rw_r", list.length ? Math.round(r) : null);
     setInd("rw_w", list.length ? Math.round(w) : null);
     lamp("drives", hot);
   }
+
 
   /* пара лампочек: level 0 — обе погашены, 1 — горит жёлтая «Внимание»,
      2 — горит и жёлтая, и мигает красная «Перегрев» */
@@ -757,6 +775,7 @@
       if (restyle) remountAll();
       const html = document.documentElement;
       html.dataset.svCase = settings.case;
+      html.dataset.svDigits = settings.digits;
       if (settings.overshoot) delete html.dataset.svStill; else html.dataset.svStill = "";
       if (built) {
         // лампочки и самописцы перерисуются на следующем снимке, стрелки — сразу
