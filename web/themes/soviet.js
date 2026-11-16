@@ -609,17 +609,39 @@
     }
   }
 
+  /* Планки — третьей строкой блока памяти, в том же виде: шкалы температуры 20…80 °C
+     друг под другом, справа значения и максимум за время работы HUD. Две планки —
+     температуры в колонках «%» и «занято»; три и больше — в конце строки каждой шкалы. */
+  const DIMM_LO = 20, DIMM_HI = 80;
+  let dimmMax = null;
   function renderDimms(dimms) {
     const host = $("[data-dimms]");
-    const slots = dimms.map((d) => d.slot).join(",");
-    if (host.dataset.slots !== slots) {
-      host.dataset.slots = slots;
-      host.innerHTML = dimms.length ? `<span class="sv-cap">Планки</span>` + dimms.map((d) =>
-        `<span class="sv-dimm"><span class="sv-cap">DIMM${d.slot}</span>${ind(`dimm${d.slot}`, 2, 1, "sv-slot--sm")}<span class="sv-unit">°C</span></span>`).join("") : "";
+    const list = dimms.filter((d) => d.temp != null);
+    const wide = list.length > 2;
+    const layout = list.map((d) => d.slot).join(",") + (wide ? "w" : "");
+    if (host.dataset.layout !== layout) {
+      host.dataset.layout = layout;
+      [...inds.keys()].filter((k) => k.startsWith("dimm")).forEach((k) => inds.delete(k));
+      const line = (d) => `<div class="sv-dimmline"><span class="sv-cap">DIMM${d.slot}</span>
+          <div class="sv-bar2"><div class="sv-seg sv-seg--dimm" data-dimmbar="${d.slot}"><i></i></div></div>
+          ${wide ? `<span class="sv-edge__v">${ind(`dimm${d.slot}`, 2, 1)}<span class="sv-unit">°C</span></span>` : ""}</div>`;
+      host.innerHTML = list.length ? `<div class="sv-memrow sv-memrow--dimm${wide ? " sv-memrow--wide" : ""}">
+          <span class="sv-plate sv-plate--sm">Планки</span>
+          <div class="sv-dimmlines">${list.map(line).join("")}
+            <div class="sv-dimmscale"><div class="sv-ticks"></div><div class="sv-ticknums"><span>20</span><span>35</span><span>50</span><span>65</span><span>80</span></div></div></div>
+          ${wide ? "" : list.map((d) => `<span class="sv-edge__v">${ind(`dimm${d.slot}`, 2, 1)}<span class="sv-unit">°C</span></span>`).join("") + (list.length === 1 ? "<span></span>" : "")}
+          <span class="sv-edge__v" title="Самая высокая температура планок с запуска HUD"><span class="sv-cap">макс.</span>${ind("dimm_max", 2, 1)}<span class="sv-unit">°C</span></span>
+        </div>` : "";
       host.querySelectorAll("[data-ind]").forEach(mount);
     }
-    dimms.forEach((d) => setInd(`dimm${d.slot}`, d.temp != null ? Number(d.temp) : null));
+    for (const d of list) {
+      setInd(`dimm${d.slot}`, Number(d.temp));
+      segFill(host.querySelector(`[data-dimmbar="${d.slot}"]`), ((d.temp - DIMM_LO) / (DIMM_HI - DIMM_LO)) * 100);
+      dimmMax = dimmMax == null ? Number(d.temp) : Math.max(dimmMax, Number(d.temp));
+    }
+    setInd("dimm_max", list.length ? dimmMax : null);
   }
+
 
   /* Накопители. Шкала — плоский газоразрядный индикатор (как ИН-26): заполненность диска.
      Свечение — отдельными штрихами, погашенные штрихи видны тускло. Меняющиеся числа —
