@@ -252,8 +252,6 @@ html[data-sv-still] .sv-edge__ptr { transition: bottom 0.7s ease-out; }
 
 /* ── самописцы ── */
 .sv-recs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; flex: 1; min-height: 0; }
-.sv-card--cpu .sv-recs, .sv-card--gpu .sv-recs { flex: none; }
-.sv-card--cpu .sv-rec__win, .sv-card--gpu .sv-rec__win { flex: none; height: 76px; }
 /* память — сразу под приборами, на одном уровне с блоком ядер слева */
 .sv-memblock { margin: 0; }
 
@@ -281,6 +279,11 @@ html[data-sv-digits="vfd"] .sv-vbar { --on: #4fe6c6; --on-hi: #c8fff0; --glow: r
 .sv-mbrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
 .sv-mbi { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .sv-mbi[hidden] { display: none; }
+/* метка пера: кружок цвета его чернил */
+.sv-pen { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); flex: none;
+  box-shadow: 0 0 0 1.5px rgba(242,236,217,0.85), 0 1px 2px rgba(0,0,0,0.5); }
+/* общий самописец ГП занимает всё место между памятью и строкой индикаторов */
+.sv-multirec { flex: 1; min-height: 60px; }
 .sv-mbi .sv-cap { font-size: 13px; letter-spacing: 0.08em; }
 .sv-mbi .sv-unit { margin-left: 0; font-size: 12px; color: var(--sv-dim); }
 .sv-memblock { display: flex; flex-direction: column; gap: 10px; }

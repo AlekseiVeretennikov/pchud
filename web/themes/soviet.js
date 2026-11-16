@@ -290,7 +290,10 @@
      f — доля секунды с последнего снимка (0…1): лента сдвигается плавно, а не рывком
      раз в секунду. Новая точка появляется под кареткой и выезжает из-под неё,
      перо стоит ровно на краю бумаги между двумя последними значениями. */
-  function drawRecorder(canvas, hist, { len, lo, hi, minSpan = 10, smooth = 0, pad = 0.12 }, f = 0) {
+  function drawRecorder(canvas, hist, cfg, f = 0) {
+    const { len } = cfg;
+    // одно перо (hist + шкала из cfg) или несколько — у каждого своя шкала и цвет чернил
+    const series = cfg.series || [{ hist, lo: cfg.lo, hi: cfg.hi, minSpan: cfg.minSpan, smooth: cfg.smooth, color: null }];
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.clientWidth, H = canvas.clientHeight;
     if (!W || !H) return;
@@ -306,7 +309,7 @@
     const PEN = 12;                                   // правый край: каретка с пером
     // пока запись короче окна (первые минуты после запуска), лента идёт крупнее:
     // окно растёт от минуты до полного (10 минут у плиток платы и ГП)
-    const filled = (hist || []).length;
+    const filled = Math.max(...series.map((sr) => (sr.hist || []).length));
     const n = Math.max(2, Math.min(len, Math.max(60, filled)));
     const plotW = W - PEN, step = plotW / (n - 1);
     const X = (i) => (i + 1 - f) * step;              // i — номер точки в окне из n
@@ -328,6 +331,23 @@
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
     }
 
+    // каретка — общая, перья — у каждой линии своё
+    const pens = series.map((sr) => plotPen(ctx, sr, { n, H, X, dim, plotW }));
+    ctx.fillStyle = "#151513";
+    ctx.fillRect(plotW, 0, PEN, H);
+    pens.forEach(({ py, color }, i) => {
+      ctx.fillStyle = series.length > 1 ? color : "#c9c4b4";
+      ctx.beginPath(); ctx.moveTo(plotW - 2, py); ctx.lineTo(W, py - 5); ctx.lineTo(W, py + 5); ctx.closePath(); ctx.fill();
+    });
+    // блик стекла
+    const gl = ctx.createLinearGradient(0, 0, W * 0.6, H);
+    gl.addColorStop(0, "rgba(255,255,255,0.18)"); gl.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+  }
+
+  // одно перо: сглаживание, шкала, кривая; возвращает высоту пера у края бумаги
+  function plotPen(ctx, { hist, lo, hi, minSpan = 10, smooth = 0, color }, { n, H, X, dim, plotW }) {
+    const pad = 0.12;
     let data = (hist || []).slice(-n).map((v) => (v == null || Number.isNaN(v) ? null : v));
     const known = data.filter((v) => v != null);
     if (smooth && data.length > 2) {
@@ -351,11 +371,11 @@
     if (a == null) a = 0;
     if (b == null || b <= a) b = a + minSpan;
     const Y = (v) => H - 4 - ((Math.max(a, Math.min(b, v)) - a) / (b - a)) * (H - 8);
-
     // кривая: через середины отрезков, сами точки — опорные (ломаная без углов)
     const off = n - data.length;
     const pts = [];
     data.forEach((v, i) => { if (v != null) pts.push([X(off + i), Y(v)]); });
+    const ink = color || INKS[opts.ink] || INKS.violet;
     if (pts.length > 1) {
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
@@ -363,26 +383,19 @@
         ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
       }
       ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
-      ctx.strokeStyle = INKS[opts.ink] || INKS.violet;
+      ctx.strokeStyle = ink;
       ctx.globalAlpha = dim ? 0.8 : 0.9;
       ctx.lineWidth = 1.7; ctx.lineJoin = "round"; ctx.lineCap = "round";
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // каретка и перо: перо — на краю бумаги, между двумя последними значениями
-    ctx.fillStyle = "#151513";
-    ctx.fillRect(plotW, 0, PEN, H);
+    // перо — на краю бумаги, между двумя последними значениями
     let py = H - 4;
     if (pts.length > 1) {
       const p = pts[pts.length - 2], q = pts[pts.length - 1];
       py = q[0] === p[0] ? q[1] : p[1] + (q[1] - p[1]) * Math.max(0, Math.min(1, (plotW - p[0]) / (q[0] - p[0])));
     } else if (pts.length) py = pts[0][1];
-    ctx.fillStyle = "#c9c4b4";
-    ctx.beginPath(); ctx.moveTo(plotW - 2, py); ctx.lineTo(W, py - 5); ctx.lineTo(W, py + 5); ctx.closePath(); ctx.fill();
-    // блик стекла
-    const gl = ctx.createLinearGradient(0, 0, W * 0.6, H);
-    gl.addColorStop(0, "rgba(255,255,255,0.18)"); gl.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+    return { py, color: ink };
   }
 
   /* Самописцы с окном в минуту (сеть, кадры) перерисовываются каждый кадр — лента
@@ -433,6 +446,9 @@
         : readout("gpu_clock", "Частота", "МГц", 4) + readout("vram_clock", "Частота памяти", "МГц", 5)}</div>
     </div>`;
   }
+  // пункт строки с цветной меткой пера общего самописца
+  const penItem = (id, label, unit, digits, frac, ink) =>
+    `<span class="sv-mbi" data-mbi="${id}"><i class="sv-pen" style="--ink:${INKS[ink]}"></i><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
   const mbItem = (id, label, unit, digits, frac = 0) =>
     `<span class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
 
@@ -461,7 +477,8 @@
         <div class="sv-dimms" data-dimms></div>
       </div>
       <div class="sv-sect sv-sect--foot"><b>ГП</b> термики и охлаждение</div>
-      <div class="sv-recs">${recHtml("hotspot", "Горячая точка", "°C", 3)}${recHtml("fan", "Вентиляторы", "об/мин", 4)}${recHtml("bus", "Шина PCIe", "%", 3)}</div>
+      <div class="sv-rec__win sv-multirec" title="Три пера, у каждого своя шкала: горячая точка, вентиляторы, нагрузка шины"><canvas data-canvas="gputherm"></canvas></div>
+      <div class="sv-mbrow">${penItem("hotspot", "Гор. точка", "°C", 2, 1, "violet")}${penItem("fan", "Вент.", "об/мин", 4, 0, "red")}${penItem("bus", "Шина", "%", 3, 0, "green")}${mbItem("pcie", "PCIe", "ГТ/с", 2)}</div>
     </section>
     <div class="sv-mini">
       <section class="sv-card sv-card--drives">${screws}
@@ -675,11 +692,7 @@
     setInd(id, value);
     if (sub !== undefined) setText($(`[data-sub="${id}"]`), sub || " ");
   }
-  const minmax = (h, digits = 0) => {
-    const d = (h || []).filter((v) => v != null);
-    if (!d.length) return "";
-    return `мин ${comma(Math.min(...d).toFixed(digits))} · макс ${comma(Math.max(...d).toFixed(digits))}`;
-  };
+
 
   /* ── главный рендер ────────────────────────────────────── */
   function render(snap) {
@@ -740,15 +753,21 @@
     // термики ГП
     const gh = snap.gpu_history || {};
     const hs = num(m.gpu_hotspot);
-    setRec("hotspot", gh.hotspot, { len: 600, smooth: 4 }, hs != null ? Math.round(hs) : null,
-      hs != null && gpuT != null ? `Δ к ГП ${Math.round(hs - gpuT)} °C · ${minmax(gh.hotspot)}` : minmax(gh.hotspot));
     const gfans = snap.gpu_fans || [];
     const fanHist = gh.fan || [];
-    setRec("fan", fanHist, { len: 600, smooth: 4, lo: 0, hi: Math.max(2000, ...fanHist) },
-      gfans.length ? Math.max(...gfans) : null, gfans.length ? gfans.map((v, i) => `В${i + 1} ${v}`).join(" · ") : "");
     const bus = num(m.bus_load), pcie = num(m.pcie_speed);
-    setRec("bus", gh.bus, { len: 600, smooth: 8, lo: 0, hi: 100 }, bus != null ? Math.round(bus) : null,
-      pcie != null ? `PCIe ${Math.round(pcie)} ГТ/с` : "");
+    drawRecorder($('[data-canvas="gputherm"]'), null, { len: 600, series: [
+      { hist: gh.hotspot, smooth: 4, minSpan: 10, color: INKS.violet },
+      { hist: fanHist, smooth: 4, lo: 0, hi: Math.max(2000, ...fanHist), color: INKS.red },
+      { hist: gh.bus, smooth: 8, lo: 0, hi: 100, color: INKS.green },
+    ] });
+    setInd("mb_hotspot", hs);
+    setInd("mb_fan", gfans.length ? Math.max(...gfans) : null);
+    setInd("mb_bus", bus != null ? Math.round(bus) : null);
+    setInd("mb_pcie", pcie != null ? Math.round(pcie) : null);
+    $('[data-mbi="hotspot"]').title = hs != null && gpuT != null ? `на ${Math.round(hs - gpuT)} °C горячее ГП` : "";
+    $('[data-mbi="fan"]').title = gfans.length ? `вентиляторы видеокарты: ${gfans.join(", ")} об/мин` : "";
+    $('[data-mbi="pcie"]').hidden = pcie == null;
 
     // сеть
     const net = snap.network;
