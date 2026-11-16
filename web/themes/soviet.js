@@ -561,7 +561,9 @@
       host.dataset.layout = layout;
       host.innerHTML = list.length ? list.map((d) => `<div class="sv-drive" data-letter="${d.letter}">
           <span class="sv-drive__l">${d.letter}</span><span class="sv-drive__k">${d.kind === "HDD" ? "ЖМД" : d.kind === "NVMe" ? "NVMe" : "ТТН"}</span>
-          <div class="sv-hbar"><b></b><u></u></div><span class="sv-drive__p"></span><span class="sv-drive__s"></span></div>`).join("") +
+          <div class="sv-tubebox"><div class="sv-tube"><i></i></div><div class="sv-tubescale"></div></div>
+          <span class="sv-drive__p"></span><span class="sv-drive__s"></span>
+          <span class="sv-neon" title="Активность диска: чем ярче, тем больше чтения и записи"></span></div>`).join("") +
         `<div class="sv-drive sv-drive--rw"><span class="sv-cap">Чтение</span>${ind("rw_r", 4, 0, "sv-slot--sm")}
           <span class="sv-cap">Запись</span>${ind("rw_w", 4, 0, "sv-slot--sm")}<span class="sv-unit">МБ/с</span></div>`
         : '<div class="sv-cap">нет данных</div>';
@@ -573,7 +575,10 @@
       const row = host.querySelector(`[data-letter="${d.letter}"]`);
       if (!row) continue;
       const p = d.used_pct != null ? Math.max(0, Math.min(100, d.used_pct)) : null;
-      fill(row.querySelector(".sv-hbar"), p);
+      // газоразрядный шкальный индикатор: столбик свечения длиной в заполненность
+      row.querySelector(".sv-tube i").style.width = `calc((100% - 8px) * ${((p ?? 0) / 100).toFixed(3)})`;
+      const act = d.activity_pct != null ? Math.max(0, Math.min(100, d.activity_pct)) : 0;
+      row.querySelector(".sv-neon").style.setProperty("--a", Math.sqrt(act / 100).toFixed(3));
       setText(row.querySelector(".sv-drive__p"), p != null ? `${Math.round(p)} %` : "");
       const t = d.temp != null ? Math.round(d.temp) : null;
       const [amber, red] = d.kind === "HDD" ? [45, 55] : [60, 75];
