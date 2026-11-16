@@ -507,7 +507,9 @@
   }
 
   /* ── ядра: профильные приборы по группам (ККД) ─────────── */
-  const CORE_HOT = 80;                       // с этой температуры цифры ядра краснеют
+  const CORE_HOT = 80;
+  // цифры шкалы нагрузки — слева от каждой шкалы, на щите
+  const EDGE_NUMS = [100, 50, 0].map((v) => `<b style="bottom:calc(4px + ${v / 100} * (100% - 8px))">${v}</b>`).join("");                       // с этой температуры цифры ядра краснеют
   // вертикальный газоразрядный столбик: светятся штрихи снизу до уровня (0…100 %)
   function vFill(bar, pct) {
     if (!bar) return;
@@ -530,12 +532,13 @@
         const ids = g.cores;
         return `<div class="sv-ccd"><div class="sv-sect"><b>${name}</b>${tag}<span>ядра ${ids[0] + 1}–${ids[ids.length - 1] + 1}</span>
             <span class="sv-ccd__t" data-gtemp="${g.temp_key || ""}"></span></div>
-          <div class="sv-strip">${ids.map((id) => `<div class="sv-edge" data-core="${id}">
+          <div class="sv-strip"><div class="sv-rowlab"><span class="sv-edge__n">&nbsp;</span><div class="sv-rowlab__sp"></div>
+              <span class="sv-rowlab__t">ГГц</span><span class="sv-rowlab__t">°C</span></div>${ids.map((id) => `<div class="sv-edge" data-core="${id}">
             <span class="sv-edge__n">Я${id + 1}</span>
-            <div class="sv-edge__pair"><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
+            <div class="sv-edge__pair"><div class="sv-edge__nums">${EDGE_NUMS}</div><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
             ${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}
             ${ind(`core_t_${id}`, 2, 0, "sv-slot--core")}</div>`).join("")}</div></div>`;
-      }).join("") + `</div><div class="sv-cores__legend">шкала — нагрузка 0–100 % · столбик — температура 30–100 °C · под ними частота, ГГц, и температура, °C</div>`;
+      }).join("") + `</div><div class="sv-cores__legend">шкала со стрелкой — нагрузка, % · светящийся столбик — температура 30–100 °C</div>`;
       host.classList.toggle("sv-cores--one", groups.length === 1);
       [...inds.keys()].filter((k) => k.startsWith("core_")).forEach((k) => inds.delete(k));
       host.querySelectorAll("[data-ind]").forEach(mount);
