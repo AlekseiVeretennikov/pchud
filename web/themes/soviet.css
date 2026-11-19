@@ -31,6 +31,25 @@ html[data-theme="soviet"][data-sv-case="bakelite"] {
   --bg-rgb: 36, 27, 22; --panel-rgb: 46, 36, 29; --panel2-rgb: 39, 30, 24;
   --ink-rgb: 230, 217, 188; --dim-rgb: 160, 143, 116;
 }
+html[data-theme="soviet"][data-sv-case="black"] {
+  /* чёрная порошковая сталь промышленной стойки */
+  --sv-case: #121210; --sv-case-hi: #2b2925;
+  --sv-plate: #c8bfa9; --sv-plate-ink: #171612;
+  --sv-label: #e7e0d1; --sv-dim: #9f998d;
+  --bg: #121210; --panel: #1c1b19; --panel-2: #151513; --line: #3b3934;
+  --ink: #eee7d8; --ink-dim: #aaa397;
+  --bg-rgb: 18, 18, 16; --panel-rgb: 28, 27, 25; --panel2-rgb: 21, 21, 19;
+  --ink-rgb: 238, 231, 216; --dim-rgb: 170, 163, 151;
+}
+html[data-theme="soviet"][data-sv-case="modules"] {
+  /* светлые съёмные модули в тёмной графитовой раме */
+  --sv-case: #242422; --sv-case-hi: #393834;
+  --sv-plate: #e4dfd1; --sv-plate-ink: #1c1b18;
+  --bg: #242422; --panel: #302f2b; --panel-2: #24231f; --line: #4b4942;
+  --ink: #eee9dd; --ink-dim: #aaa59b;
+  --bg-rgb: 36, 36, 34; --panel-rgb: 48, 47, 43; --panel2-rgb: 36, 35, 31;
+  --ink-rgb: 238, 233, 221; --dim-rgb: 170, 165, 155;
+}
 
 html[data-theme="soviet"] body {
   background-color: var(--sv-case);
@@ -58,11 +77,33 @@ html:not([data-theme="soviet"]) .sv { display: none; }
   display: flex; flex-direction: column; gap: 8px;
 }
 .sv-card { text-shadow: 0 -1px 0 rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.12); }
+html[data-theme="soviet"][data-sv-case="black"] .sv-card {
+  background:
+    linear-gradient(105deg, rgba(255,255,255,0.035), transparent 24%),
+    linear-gradient(180deg, #242320, #171715);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 #070706,
+              0 0 0 1px #050505, 0 3px 9px rgba(0,0,0,0.65);
+}
+html[data-theme="soviet"][data-sv-case="modules"] .sv-card {
+  --sv-label: #000; --sv-dim: #000;
+  --sv-plate: #eee9dc; --sv-plate-ink: #1c1b18;
+  --sv-face: #f0e9d7; --sv-face-ink: #1a1813;
+  color: var(--sv-label);
+  background:
+    linear-gradient(105deg, rgba(255,255,255,0.24), transparent 26%),
+    linear-gradient(180deg, #d2cec3, #b4b0a5);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.78), inset 0 -1px 0 rgba(65,62,56,0.45),
+              0 0 0 1px #4b4943, 0 1px 3px rgba(0,0,0,0.52);
+  text-shadow: none;
+}
+/* Светлые кассеты собраны в одну стойку: между ними узкий монтажный шов,
+   а не широкие тёмные щели отдельных карточек. */
+html[data-theme="soviet"][data-sv-case="modules"] .hud { gap: 4px; padding: 8px; }
+html[data-theme="soviet"][data-sv-case="modules"] .sv-mini { gap: 4px; }
 .sv-card--cpu { grid-area: cpu; }
 .sv-card--gpu { grid-area: gpu; }
 .sv-mini { grid-area: mini; display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 10px; min-height: 0; }
-.sv-card--idle > :not(.sv-head):not(.sv-screw) { opacity: 0.45; }
-
 .sv-screw { position: absolute; width: 11px; height: 11px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #d9d9d2, #8c8c84 55%, #4a4a44);
   box-shadow: 0 1px 1px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(0,0,0,0.35); }
@@ -187,25 +228,30 @@ html:not([data-theme="soviet"]) .sv { display: none; }
   border-radius: 0.45em 0.45em 0.25em 0.25em;
   background: radial-gradient(ellipse at 50% 40%, rgba(255,140,40,0.16), rgba(30,14,6,0.95) 70%), #120a06;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12), inset 0 0.25em 0.3em rgba(255,255,255,0.06), 0 2px 4px rgba(0,0,0,0.6); }
-.sv-nix b { font-weight: 400; color: #ffb36b; line-height: 1;
+.sv-nix b { position: absolute; inset: 0; display: grid; place-items: center;
+  font-weight: 400; color: #ffb36b; line-height: 1;
   text-shadow: 0 0 0.15em #ff7a1a, 0 0 0.4em #ff6a00, 0 0 0.7em rgba(255,90,0,0.7); }
 .sv-nix::before { content: ""; position: absolute; inset: 0.12em; border-radius: inherit; opacity: 0.35; pointer-events: none;
   background: repeating-linear-gradient(60deg, transparent 0 3px, rgba(0,0,0,0.6) 3px 4px),
               repeating-linear-gradient(-60deg, transparent 0 3px, rgba(0,0,0,0.6) 3px 4px); }
 .sv-nix::after { content: ""; position: absolute; left: 18%; top: 6%; width: 22%; height: 30%; border-radius: 50%;
   background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0)); pointer-events: none; }
-.sv-nix--in b { animation: sv-nix-in 0.22s ease-out; }
-@keyframes sv-nix-in { from { opacity: 0.15; filter: blur(1px); } to { opacity: 1; filter: none; } }
+.sv-nix__ghost { opacity: 0; pointer-events: none; }
 .sv-nix__sep { color: #ffb36b; text-shadow: 0 0 0.3em #ff6a00; line-height: 1; padding-bottom: 0.1em; }
-.sv-ind--nixie.sv-ind--off .sv-nix b { color: #5a3a24; text-shadow: none; }
+.sv-ind--nixie.sv-ind--off .sv-nix__live { color: #5a3a24; text-shadow: none; }
 
 /* люминесцентный индикатор (как ИВ-11): бирюзовые сегменты под тёмным стеклом */
 .sv-ind--vfd { gap: 0.1em; padding: 0.18em 0.25em; border-radius: 4px; background: #0b1412;
   box-shadow: inset 0 0 0 1px #000, inset 0 0 0.6em rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.12); }
-.sv-vfd svg { display: block; width: 0.72em; height: 1.02em; overflow: visible; }
-.sv-vfd rect, .sv-vfd circle { fill: #15302a; transition: fill 0.15s ease-out; }
+.sv-vfd { position: relative; width: 0.72em; height: 1.02em; }
+.sv-vfd svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+.sv-vfd__ghost { pointer-events: none; }
+.sv-vfd__ghost rect { opacity: 0; }
+.sv-vfd__ghost circle { display: none; }
+.sv-vfd rect, .sv-vfd circle { fill: #15302a; }
+.sv-vfd__live rect, .sv-vfd__live circle { transition: fill 0.08s ease-out; }
 .sv-vfd rect.on, .sv-vfd circle.on { fill: #6ff0d2; filter: drop-shadow(0 0 2.5px #38e1c4); }
-.sv-ind--vfd.sv-ind--off rect.on { fill: #2b5a50; filter: none; }
+.sv-ind--vfd.sv-ind--off .sv-vfd__live rect.on { fill: #2b5a50; filter: none; }
 
 /* ── ядра: профильные шкалы ── */
 .sv-cores { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; }
@@ -243,8 +289,8 @@ html:not([data-theme="soviet"]) .sv { display: none; }
     linear-gradient(180deg, #fbf6e6, var(--sv-face));
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); }
 .sv-edge__ptr { position: absolute; left: 0; right: 0; bottom: 0; height: 0;
-  transition: bottom 0.7s cubic-bezier(0.3, 1.45, 0.55, 1); }
-html[data-sv-still] .sv-edge__ptr { transition: bottom 0.7s ease-out; }
+  transition: bottom 0.95s cubic-bezier(0.22, 0.75, 0.28, 1.12); }
+html[data-sv-still] .sv-edge__ptr { transition: bottom 0.95s cubic-bezier(0.22, 0.7, 0.25, 1); }
 /* стрелка — красная линия поперёк шкалы, как у профильных приборов */
 .sv-edge__ptr::before { content: ""; position: absolute; left: 1px; right: 1px; top: -1px; height: 2px; background: var(--sv-red);
   box-shadow: 0 1px 1.5px rgba(0,0,0,0.35); }
@@ -310,6 +356,10 @@ html[data-sv-rec="scope"] .sv-rec__win canvas { border-radius: 5px; }
 /* колонки одной ширины во всех строках памяти — окошки стоят друг под другом */
 .sv-memrow { display: grid; grid-template-columns: 72px minmax(0, 1fr) 78px 138px 128px; gap: 12px; align-items: center; }
 .sv-memrow .sv-plate { justify-self: start; }
+/* Таблички строк памяти привязаны к самим шкалам, а не к центру блока вместе
+   с подписями шкалы. «Планки» начинается на одной высоте с первой строкой DIMM. */
+.sv-mems .sv-memrow > .sv-plate { align-self: start; margin-top: 12px; }
+.sv-memrow--dimm > .sv-plate { align-self: start; margin-top: 0; }
 .sv-memrow .sv-edge__v .sv-cap { font-size: 12px; letter-spacing: 0.08em; }
 .sv-memrow > .sv-edge__v:last-child { justify-self: end; }
 .sv-memrow__bar { min-width: 0; padding-top: 12px; }

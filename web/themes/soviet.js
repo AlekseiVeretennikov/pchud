@@ -8,7 +8,7 @@
  */
 (() => {
   const NS = "http://www.w3.org/2000/svg";
-  const FRAME_MS = 33;                       // ~30 кадров/с, как у счёта чисел в app.js
+  const FRAME_MS = 16;                       // ~60 кадров/с: плавные стрелки и движение ленты
   const INKS = { violet: "#3b2a86", red: "#a3241c", green: "#1f6b34", blue: "#1d4f9a" };
   /* Осциллограф светится тем же, чем и цифры: при люминесцентных — бирюзой ИВ-11,
      при барабанах и газоразрядных лампах — оранжевым неоном, как шкалы накопителей.
@@ -61,16 +61,20 @@
     const n = { angle: toAngle(0), vel: 0, target: toAngle(0), toAngle };
     const paint = () => g.setAttribute("transform", `rotate(${n.angle.toFixed(2)} ${cx} ${cy})`);
     n.step = (dt) => {
-      const k = 60, zeta = opts.overshoot ? 0.38 : 1;
+      // Мягкая пружина движется почти весь интервал между секундными снимками.
+      // При перелёте колебание небольшое, без него стрелка подходит критически плавно.
+      const k = 32, zeta = opts.overshoot ? 0.55 : 1;
       const c = 2 * zeta * Math.sqrt(k);
-      // полушаги — устойчивее при 30 кадрах
-      for (let i = 0; i < 2; i++) {
+      // Три подшага сохраняют плавность при редком кадре или краткой нагрузке WebView.
+      for (let i = 0; i < 3; i++) {
         const a = k * (n.target - n.angle) - c * n.vel;
-        n.vel += a * dt / 2;
-        n.angle += n.vel * dt / 2;
+        n.vel += a * dt / 3;
+        n.angle += n.vel * dt / 3;
       }
       paint();
-      return Math.abs(n.target - n.angle) > 0.05 || Math.abs(n.vel) > 0.05;
+      const moving = Math.abs(n.target - n.angle) > 0.03 || Math.abs(n.vel) > 0.03;
+      if (!moving) { n.angle = n.target; n.vel = 0; paint(); }
+      return moving;
     };
     n.set = (v) => { const t = n.toAngle(v); if (t !== n.target) { n.target = t; wake(n); } };
     paint();
@@ -136,11 +140,19 @@
   }
 
   /* Газоразрядные лампы (как ИН-14) и люминесцентный индикатор (как ИВ-11).
-     Лампа: цифра гаснет и вспыхивает новой. Люминесцентный: сегменты переключаются
-     с коротким послесвечением; ведущие нули не горят, как в настоящих часах. */
+     Старая цифра коротко угасает поверх новой: у лампы это похоже на смену катодов,
+     у VFD — на послесвечение сегментов. Ведущие нули VFD не горят, как в часах. */
   const SEG = { 0: "abcdef", 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc", 5: "afgcd", 6: "afgedc", 7: "abc", 8: "abcdefg", 9: "abcdfg", "-": "g", " ": "" };
   const SEG_RECT = { a: [3, 1, 14, 3.4], d: [3, 29.6, 14, 3.4], g: [3, 15.3, 14, 3.4], f: [1, 3, 3.4, 13],
                      b: [15.6, 3, 3.4, 13], e: [1, 18, 3.4, 13], c: [15.6, 18, 3.4, 13] };
+  const vfdSvg = (cls) => `<svg class="${cls}" viewBox="0 0 24 34">${Object.entries(SEG_RECT).map(([k, [x, y, w, h]]) =>
+    `<rect data-s="${k}" x="${x}" y="${y}" width="${w}" height="${h}" rx="1.4"/>`).join("")}` +
+    `<circle cx="21.6" cy="31" r="1.8"/></svg>`;
+  const segments = (svg) => {
+    const out = {};
+    svg.querySelectorAll("rect").forEach((r) => { out[r.dataset.s] = r; });
+    return out;
+  };
   function glowInd(style, digits, frac, cls) {
     const el = document.createElement("span");
     el.className = `sv-ind sv-ind--${style} sv-ind--off ${cls}`.trim();
@@ -151,29 +163,60 @@
       }
       const c = document.createElement("span");
       if (style === "nixie") {
-        c.className = "sv-nix"; c.innerHTML = "<b>-</b>";
-        cells.push({ el: c, d: c.firstChild, cur: "-" });
+        c.className = "sv-nix";
+        c.innerHTML = '<b class="sv-nix__ghost" aria-hidden="true">-</b><b class="sv-nix__live">-</b>';
+        cells.push({ el: c, ghost: c.firstChild, live: c.lastChild, ghostFx: null, liveFx: null, cur: "-" });
       } else {
         c.className = "sv-vfd";
-        c.innerHTML = `<svg viewBox="0 0 24 34">${Object.entries(SEG_RECT).map(([k, [x, y, w, h]]) =>
-          `<rect data-s="${k}" x="${x}" y="${y}" width="${w}" height="${h}" rx="1.4"/>`).join("")}` +
-          `<circle cx="21.6" cy="31" r="1.8"/></svg>`;
-        const seg = {};
-        c.querySelectorAll("rect").forEach((r) => { seg[r.dataset.s] = r; });
-        cells.push({ el: c, seg, dot: c.querySelector("circle"), cur: null });
-        if (frac && i === digits - 1) c.querySelector("circle").classList.add("on");   // запятая
+        c.innerHTML = vfdSvg("sv-vfd__ghost") + vfdSvg("sv-vfd__live");
+        const ghost = c.firstChild, live = c.lastChild;
+        cells.push({ el: c, ghost, live, ghostSeg: segments(ghost), liveSeg: segments(live),
+          dot: live.querySelector("circle"), segFx: {}, cur: "-" });
+        if (frac && i === digits - 1) live.querySelector("circle").classList.add("on");   // запятая
       }
       el.append(c);
     }
     const show = (c, ch) => {
       if (c.cur === ch) return;
+      const old = c.cur;
       c.cur = ch;
       if (style === "nixie") {
-        c.d.textContent = ch;
-        c.el.classList.remove("sv-nix--in"); void c.el.offsetWidth; c.el.classList.add("sv-nix--in");
+        c.ghost.textContent = old;
+        c.live.textContent = ch;
+        if (c.ghostFx) c.ghostFx.cancel();
+        if (c.liveFx) c.liveFx.cancel();
+        c.ghostFx = c.ghost.animate(
+          [{ opacity: 0.72, filter: "blur(0)" }, { opacity: 0, filter: "blur(1.2px)" }],
+          { duration: 230, easing: "ease-out", fill: "forwards" },
+        );
+        c.liveFx = c.live.animate(
+          [{ opacity: 0.35, filter: "blur(0.8px)" }, { opacity: 1, filter: "none" }],
+          { duration: 180, easing: "ease-out" },
+        );
       } else {
-        const on = SEG[ch] || "";
-        for (const k in c.seg) c.seg[k].classList.toggle("on", on.includes(k));
+        const before = SEG[old] || "", after = SEG[ch] || "";
+        // Общие для старой и новой цифры сегменты вообще не анимируем: они остаются
+        // стабильной опорой. Разгораются только новые, угасают только исчезающие.
+        for (const k in c.liveSeg) {
+          if (c.segFx[k]) c.segFx[k].cancel();
+          const was = before.includes(k), will = after.includes(k);
+          const ghost = c.ghostSeg[k], live = c.liveSeg[k];
+          ghost.classList.toggle("on", was && !will);
+          live.classList.toggle("on", will);
+          if (!was && will) {
+            c.segFx[k] = live.animate(
+              [{ opacity: 0.12 }, { opacity: 1 }],
+              { duration: 160, easing: "ease-out" },
+            );
+          } else if (was && !will) {
+            c.segFx[k] = ghost.animate(
+              [{ opacity: 1 }, { opacity: 0 }],
+              { duration: 260, easing: "ease-out", fill: "forwards" },
+            );
+          } else {
+            delete c.segFx[k];
+          }
+        }
       }
     };
     return {
@@ -300,7 +343,7 @@
      f — доля секунды с последнего снимка (0…1): лента сдвигается плавно, а не рывком
      раз в секунду. Новая точка появляется под кареткой и выезжает из-под неё,
      перо стоит ровно на краю бумаги между двумя последними значениями. */
-  function drawRecorder(canvas, hist, cfg, f = 0) {
+  function drawRecorder(canvas, hist, cfg, f = 0, phase = tick) {
     const { len } = cfg;
     // одно перо (hist + шкала из cfg) или несколько — у каждого своя шкала и цвет чернил
     const series = cfg.series || [{ hist, lo: cfg.lo, hi: cfg.hi, minSpan: cfg.minSpan, smooth: cfg.smooth, ink: null }];
@@ -329,7 +372,7 @@
     const ink = dim ? "120,40,20" : "196,92,60";
     ctx.lineWidth = 1;
     for (let i = -1; i <= n; i++) {
-      const g = tick - (n - 1 - i);
+      const g = phase - (n - 1 - i);
       if (((g % minorEvery) + minorEvery) % minorEvery) continue;
       const x = X(i);
       if (x < 0 || x > plotW) continue;
@@ -502,15 +545,20 @@
   const recMover = {
     step(dt, now) {
       const f = Math.min(1, (now - lastSnap) / 1000);
-      for (const [canvas, r] of recs) if (r.live) drawRecorder(canvas, r.hist, r.cfg, f);
+      for (const [canvas, r] of recs) if (r.live) drawRecorder(canvas, r.hist, r.cfg, f, r.phase);
       return [...recs.values()].some((r) => r.live) && !document.hidden;
     },
   };
-  function record(canvas, hist, cfg) {
+  function record(canvas, hist, cfg, animate = true) {
     if (!canvas) return;
-    const live = cfg.len <= 120;
-    recs.set(canvas, { hist, cfg, live });
-    drawRecorder(canvas, hist, cfg, live ? Math.min(1, (performance.now() - lastSnap) / 1000) : 0);
+    const live = animate && cfg.len <= 120;
+    const prev = recs.get(canvas);
+    // После остановки запоминаем положение бумажной сетки. Последующие снимки системы
+    // не должны протягивать пустую ленту FPS ещё на одно деление каждую секунду.
+    const phase = live || !prev || prev.live ? tick : prev.phase;
+    recs.set(canvas, { hist, cfg, live, phase });
+    drawRecorder(canvas, hist, cfg,
+      live ? Math.min(1, (performance.now() - lastSnap) / 1000) : 0, phase);
     if (live) wake(recMover);
   }
 
@@ -681,9 +729,15 @@
      процент, сколько занято (объём — выбит на щите) и одно дополнительное значение:
      у видеопамяти — нагрузка контроллера, у ОЗУ — сколько свободно. Строки собираются
      по данным: у ОЗУ от 100 ГБ окошку «занято» нужен третий разряд. */
+  const memTotals = new Map();
   function renderMem(rows) {
     const host = $("[data-mems]");
-    const layout = rows.map((r) => `${r.id}:${r.digits}:${r.total ?? ""}`).join("|");
+    // used + available приходит из двух округлённых показаний и может плавать на 0,1 ГБ.
+    // Это не изменение установленной памяти: запоминаем первый корректный итог до перезапуска.
+    for (const r of rows) if (r.total != null && !memTotals.has(r.id)) memTotals.set(r.id, r.total);
+    // В ключе только форма строки. Текущие показания не должны пересоздавать весь блок памяти.
+    const layout = rows.map((r) =>
+      `${r.id}:${r.digits}:${r.extraDigits}:${r.extraFrac}:${r.extraLabel}:${r.extraUnit}`).join("|");
     if (host.dataset.layout !== layout) {
       host.dataset.layout = layout;
       [...inds.keys()].filter((k) => k.startsWith("mem_")).forEach((k) => inds.delete(k));
@@ -692,7 +746,7 @@
           <div class="sv-memrow__bar"><div class="sv-bar2"><div class="sv-seg sv-seg--mem"><i></i></div></div>
             <div class="sv-ticks"></div><div class="sv-ticknums"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div></div>
           <span class="sv-edge__v">${ind(`mem_p_${r.id}`, 3)}<span class="sv-unit">%</span></span>
-          <span class="sv-edge__v">${ind(`mem_u_${r.id}`, r.digits, 1)}<span class="sv-unit">из ${r.total != null ? comma(r.total.toFixed(1)) : "--"} ГБ</span></span>
+          <span class="sv-edge__v">${ind(`mem_u_${r.id}`, r.digits, 1)}<span class="sv-unit" data-mem-total="${r.id}"></span></span>
           <span class="sv-edge__v"><span class="sv-cap">${r.extraLabel}</span>${ind(`mem_x_${r.id}`, r.extraDigits, r.extraFrac)}<span class="sv-unit">${r.extraUnit}</span></span>
         </div>`).join("");
       host.querySelectorAll("[data-ind]").forEach(mount);
@@ -700,6 +754,9 @@
     for (const r of rows) {
       const row = host.querySelector(`[data-ind="mem_p_${r.id}"]`)?.closest(".sv-memrow");
       if (row) segFill(row.querySelector(".sv-seg"), r.pct);
+      const total = memTotals.get(r.id);
+      setText(host.querySelector(`[data-mem-total="${r.id}"]`),
+        `из ${total != null ? comma(total.toFixed(1)) : "--"} ГБ`);
       setInd(`mem_p_${r.id}`, r.pct != null ? Math.round(r.pct) : null);
       setInd(`mem_u_${r.id}`, r.used);
       setInd(`mem_x_${r.id}`, r.extra);
@@ -910,21 +967,25 @@
     setText($('[data-name="fps"]'), live ? f.app_name : fallback != null ? "" : snap.rtss_running ? "нет активной игры" : "RTSS не запущен");
     $('[data-lamp="fps"]').dataset.on = live || fallback != null ? "1" : "0";
     const fpsHist = live && f.history ? f.history.map((ft) => (ft > 0 ? 1000 / ft : null)) : [];
-    record($('[data-canvas="fps"]'), fpsHist, { len: 60, minSpan: 30, smooth: 1 });
+    // Без активной игры бумага и луч стоят: пустой FPS-самописец ничего не записывает.
+    record($('[data-canvas="fps"]'), fpsHist, { len: 60, minSpan: 30, smooth: 1 }, !!live);
 
     renderDrives(snap.drives);
   }
 
   window.HudThemes.register({
     id: "soviet",
-    name: "Приборная панель",
-    description: "Щит приборов в советском духе: стрелки, барабанные счётчики, самописцы и лампочки перегрева",
+    exclusiveRender: true,
+    name: "Приборная панель (в работе)",
+    description: "Тема в разработке: щит приборов в советском духе со стрелками, счётчиками, самописцами и сигнальными лампами",
     preview: "themes/previews/soviet.jpg",
     defaults: { case: "enamel", digits: "drum", overshoot: true, rec: "paper", paper: "bright", ink: "violet", lamps: true },
     sections: [
       { title: "Корпус", items: [
-        { key: "case", type: "choice", options: [["enamel", "Эмаль", "#56635b"], ["bakelite", "Карболит", "#2a201a"]],
-          hint: "эмаль — серо-зелёная краска приборных шкафов, карболит — тёмная пластмасса" },
+        { key: "case", type: "choice", options: [
+          ["enamel", "Эмаль", "#56635b"], ["bakelite", "Карболит", "#2a201a"],
+          ["black", "Чёрный", "#171715"], ["modules", "Светлый", "#b8b4a9"]],
+          hint: "старые эмаль и карболит сохранены; чёрный — порошковая сталь, светлый — приборные модули в графитовой раме" },
       ] },
       { title: "Цифры", items: [
         { key: "digits", type: "choice", options: [
@@ -964,7 +1025,7 @@
         // лампочки и самописцы перерисуются на следующем снимке, стрелки — сразу
         root.querySelectorAll(".sv-pen").forEach((p) => p.style.setProperty("--beam", `rgb(${scopeKit()[p.dataset.ink]})`));
         // самописцы — сразу в новом виде, не дожидаясь снимка
-        for (const [canvas, r] of recs) drawRecorder(canvas, r.hist, r.cfg, 0);
+        for (const [canvas, r] of recs) drawRecorder(canvas, r.hist, r.cfg, 0, r.phase);
         if (!opts.lamps) root.querySelectorAll("[data-lamp]").forEach((el) => { if (el.dataset.lamp !== "fps") el.dataset.on = "0"; });
       }
     },

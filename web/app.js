@@ -618,6 +618,27 @@ function renderNetwork(net) {
 }
 
 /* ── главный рендер ──────────────────────────────────── */
+function renderStatus(snap) {
+  setText("source", snap.source_display || snap.source || "—");
+  const dot = document.getElementById("source-dot");
+  if (dot) dot.dataset.state = snap.source === "demo" ? "warn" : (snap.warning ? "warn" : "ok");
+  const rtssDot = document.getElementById("rtss-dot");
+  if (rtssDot) rtssDot.dataset.state = snap.rtss_running ? "ok" : "off";
+  // подсказки кнопок подвала: что произойдёт по щелчку
+  const hwBtn = document.querySelector('.foot-app[data-app="hwinfo"]');
+  if (hwBtn) hwBtn.title = snap.source === "hwinfo" ? "HWiNFO работает" : "Запустить HWiNFO";
+  const rtBtn = document.querySelector('.foot-app[data-app="rtss"]');
+  if (rtBtn) rtBtn.title = snap.rtss_running ? "RTSS работает" : "Запустить RTSS";
+
+  const toast = document.querySelector(".toast");
+  if (toast) {
+    if (snap.warning) { toast.textContent = snap.warning; toast.hidden = false; }
+    else { toast.hidden = true; }
+    // демо-данные легко принять за настоящие — предупреждение крупнее обычного
+    toast.classList.toggle("toast--demo", snap.source === "demo");
+  }
+}
+
 function render(snap) {
   const m = snap.metrics || {};
 
@@ -726,24 +747,7 @@ function render(snap) {
   renderDrives(snap.drives);
   renderNetwork(snap.network);
 
-  setText("source", snap.source_display || snap.source || "—");
-  const dot = document.getElementById("source-dot");
-  if (dot) dot.dataset.state = snap.source === "demo" ? "warn" : (snap.warning ? "warn" : "ok");
-  const rtssDot = document.getElementById("rtss-dot");
-  if (rtssDot) rtssDot.dataset.state = snap.rtss_running ? "ok" : "off";
-  // подсказки кнопок подвала: что произойдёт по щелчку
-  const hwBtn = document.querySelector('.foot-app[data-app="hwinfo"]');
-  if (hwBtn) hwBtn.title = snap.source === "hwinfo" ? "HWiNFO работает" : "Запустить HWiNFO";
-  const rtBtn = document.querySelector('.foot-app[data-app="rtss"]');
-  if (rtBtn) rtBtn.title = snap.rtss_running ? "RTSS работает" : "Запустить RTSS";
-
-  const toast = document.querySelector(".toast");
-  if (toast) {
-    if (snap.warning) { toast.textContent = snap.warning; toast.hidden = false; }
-    else { toast.hidden = true; }
-    // демо-данные легко принять за настоящие — предупреждение крупнее обычного
-    toast.classList.toggle("toast--demo", snap.source === "demo");
-  }
+  renderStatus(snap);
 }
 
 function updateClock() {
@@ -758,19 +762,25 @@ function themeRender(snap) {
   try { activeTheme.render(snap); } catch (e) { console.error("theme render error", e); }
 }
 
+function renderSnapshot(snap) {
+  // Тема с собственной разметкой не должна параллельно обновлять скрытый базовый HUD:
+  // это удваивает работу и создаёт заметную паузу раз в секунду. Общий подвал живёт всегда.
+  if (activeTheme && activeTheme.exclusiveRender) renderStatus(snap);
+  else render(snap);
+  themeRender(snap);
+}
+
 /* ── опрос данных ────────────────────────────────────── */
 async function pollLoop(intervalMs) {
   const tick = async () => {
     try {
       if (window.pywebview && window.pywebview.api) {
         const snap = await window.pywebview.api.get_snapshot();
-        render(snap);
-        themeRender(snap);
+        renderSnapshot(snap);
         window.HudBoot.feed(snap);   // заставке нужен первый снимок
       } else {
         const snap = demoSnapshot();
-        render(snap);
-        themeRender(snap);
+        renderSnapshot(snap);
         window.HudBoot.feed(snap);
       }
     } catch (e) {
@@ -1023,22 +1033,22 @@ function setupReportButton() {
   });
 }
 
-window.addEventListener("pywebviewready", () => {
+window.addEventListener("pywebviewready", async () => {
   setupReportButton();
   setupAppButtons();
   setupQuitButton();
-  startEffects();
+  await startEffects();
   pollLoop(1000);
 });
 window.addEventListener("DOMContentLoaded", () => {
-  setTimeout(() => {
+  setTimeout(async () => {
     if (!window.pywebview) {
       // открыто в браузере: сохранять отчёт и закрывать программу некому
       for (const id of ["report-btn", "quit-btn"]) {
         const btn = document.getElementById(id);
         if (btn) btn.hidden = true;
       }
-      startEffects();
+      await startEffects();
       pollLoop(1000);
     }
   }, 300);
