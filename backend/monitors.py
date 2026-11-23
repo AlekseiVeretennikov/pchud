@@ -24,6 +24,29 @@ class _MONITORINFOEXW(ctypes.Structure):
     ]
 
 
+def startup_monitors() -> list[dict]:
+    """Границы экранов в единицах начального положения окна pywebview (96 DPI)."""
+    try:
+        user32 = ctypes.windll.user32
+        # WinForms включает тот же режим при старте. Включаем его до перечисления:
+        # иначе Windows может виртуализировать координаты для процесса без DPI awareness.
+        user32.SetProcessDPIAware()
+        dpi = user32.GetDpiForSystem() or 96
+    except (AttributeError, OSError):
+        dpi = 96
+    return [_logical_bounds(mon, dpi) for mon in list_monitors()]
+
+
+def _logical_bounds(mon: dict, dpi: int) -> dict:
+    # Начальную позицию и размер WinForms умножает на один и тот же масштаб
+    # ещё до переноса окна на целевой монитор. Общие края округляем одинаково.
+    left, top = mon["x"], mon["y"]
+    x, y = round(left * 96 / dpi), round(top * 96 / dpi)
+    return {**mon, "x": x, "y": y,
+            "width": round((left + mon["width"]) * 96 / dpi) - x,
+            "height": round((top + mon["height"]) * 96 / dpi) - y}
+
+
 def list_monitors() -> list[dict]:
     """[{device, x, y, width, height, primary}] — координаты в пикселях рабочего стола."""
     try:
@@ -32,6 +55,8 @@ def list_monitors() -> list[dict]:
         return []
     out: list[dict] = []
     MONITORINFOF_PRIMARY = 1
+    user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(_MONITORINFOEXW)]
+    user32.GetMonitorInfoW.restype = wintypes.BOOL
 
     proc_type = ctypes.WINFUNCTYPE(ctypes.c_int, wintypes.HMONITOR, wintypes.HDC,
                                    ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
@@ -165,3 +190,24 @@ def labeled_monitors() -> list[dict]:
 
 def find(device: str) -> dict | None:
     return next((m for m in list_monitors() if m["device"] == device), None)
+
+
+def window_device(window) -> str | None:
+    """Монитор нативного окна. Для свёрнутого окна Windows берёт прежнее положение."""
+    try:
+        hwnd = window.native.Handle.ToInt64()
+        user32 = ctypes.windll.user32
+        monitor_from_window = user32.MonitorFromWindow
+        monitor_from_window.argtypes = [wintypes.HWND, wintypes.DWORD]
+        monitor_from_window.restype = wintypes.HMONITOR
+        get_info = user32.GetMonitorInfoW
+        get_info.argtypes = [wintypes.HMONITOR, ctypes.POINTER(_MONITORINFOEXW)]
+        get_info.restype = wintypes.BOOL
+        hmon = monitor_from_window(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        info = _MONITORINFOEXW()
+        info.cbSize = ctypes.sizeof(info)
+        if hmon and get_info(hmon, ctypes.byref(info)):
+            return info.szDevice
+    except (AttributeError, OSError):
+        pass
+    return None

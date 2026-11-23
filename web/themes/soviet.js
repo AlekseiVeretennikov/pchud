@@ -171,7 +171,7 @@
         c.innerHTML = vfdSvg("sv-vfd__ghost") + vfdSvg("sv-vfd__live");
         const ghost = c.firstChild, live = c.lastChild;
         cells.push({ el: c, ghost, live, ghostSeg: segments(ghost), liveSeg: segments(live),
-          dot: live.querySelector("circle"), segFx: {}, cur: "-" });
+          dot: live.querySelector("circle"), segFx: {}, cur: null });
         if (frac && i === digits - 1) live.querySelector("circle").classList.add("on");   // запятая
       }
       el.append(c);
@@ -587,15 +587,12 @@
       <div class="sv-mcol"><div data-gauge="${p}_load"></div><span class="sv-cap">Нагрузка</span></div>
       <div class="sv-mcol"><div data-gauge="${p}_power"></div><span class="sv-cap">Мощность</span></div>
       <div class="sv-readouts">${p === "cpu"
-        ? readout("cpu_clock", "Частота", "МГц", 4) + readout("vcore", "Напряжение", "В", 1, 2)
-        : readout("gpu_clock", "Частота", "МГц", 4) + readout("vram_clock", "Частота памяти", "МГц", 5)}</div>
+        ? readout("cpu_clock", "Частота", "МГц", 4) + readout("vrm_temp", "Температура VRM", "°C", 3, 1)
+        : readout("gpu_clock", "Частота", "МГц", 4) + readout("gpu_hotspot", "Горячая точка", "°C", 3, 1)}</div>
     </div>`;
   }
-  // пункт строки с цветной меткой пера общего самописца
-  const penItem = (id, label, unit, digits, frac, ink) =>
-    `<span class="sv-mbi" data-mbi="${id}"><i class="sv-pen" data-ink="${ink}" style="--ink:${INKS[ink]};--beam:rgb(${scopeKit()[ink]})"></i><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
   const mbItem = (id, label, unit, digits, frac = 0) =>
-    `<span class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span>${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span>`;
+    `<div class="sv-mbi" data-mbi="${id}"><span class="sv-cap">${label}</span><span class="sv-mbi__value">${ind(`mb_${id}`, digits, frac)}<span class="sv-unit">${unit}</span></span></div>`;
 
 
   function build() {
@@ -610,8 +607,6 @@
       <div class="sv-head"><span class="sv-plate">ЦП</span><span class="sv-name" data-name="cpu">—</span>${lampPair("cpu", "ЦП")}</div>
       ${meterRow("cpu")}
       <div class="sv-cores" data-cores></div>
-      <div class="sv-sect"><b>МП</b> материнская плата</div>
-      <div class="sv-mbrow">${mbItem("vrm", "VRM", "°C", 3)}${mbItem("chipset", "Чипсет", "°C", 3)}${mbItem("sys", "Система", "°C", 2)}${mbItem("soc", "SoC", "В", 1, 3)}${mbItem("pump", "Помпа", "об/мин", 4)}${mbItem("fans", "Вент.", "об/мин", 4)}</div>
     </section>
     <section class="sv-card sv-card--gpu">${screws}
       <div class="sv-head"><span class="sv-plate">ГП</span><span class="sv-name" data-name="gpu">—</span>${lampPair("gpu", "ГП")}</div>
@@ -621,9 +616,12 @@
         <div class="sv-mems" data-mems></div>
         <div class="sv-dimms" data-dimms></div>
       </div>
-      <div class="sv-sect sv-sect--foot"><b>ГП</b> термики и охлаждение</div>
-      <div class="sv-rec__win sv-multirec" title="Три пера, у каждого своя шкала: горячая точка, вентиляторы, нагрузка шины"><canvas data-canvas="gputherm"></canvas></div>
-      <div class="sv-mbrow">${penItem("hotspot", "Гор. точка", "°C", 2, 1, "violet")}${penItem("fan", "Вент.", "об/мин", 4, 0, "red")}${penItem("bus", "Шина", "%", 3, 0, "green")}${mbItem("pcie", "PCIe", "ГТ/с", 2)}</div>
+      <div class="sv-sect"><b>МП</b> плата и охлаждение</div>
+      <div class="sv-board">
+        <div class="sv-mbrow"><span class="sv-plate">Плата</span>${mbItem("chipset", "Чипсет", "°C", 3)}${mbItem("sys", "Плата", "°C", 3)}${mbItem("soc", "Напряжение SoC", "В", 1, 3)}</div>
+        <div class="sv-mbrow"><span class="sv-plate">Охлаждение</span>${mbItem("pump", "Помпа", "об/мин", 4)}${mbItem("fans", "Вент. корпуса", "об/мин", 4)}${mbItem("fan", "Вент. ГП", "об/мин", 4)}</div>
+        <div class="sv-mbrow"><span class="sv-plate">Шина PCIe</span>${mbItem("bus", "Загрузка", "%", 3)}${mbItem("pcie", "Скорость", "ГТ/с", 2, 1)}</div>
+      </div>
     </section>
     <div class="sv-mini">
       <section class="sv-card sv-card--drives">${screws}
@@ -684,19 +682,20 @@
       const half = Math.ceil(g.cores.length / 2);
       return [{ ...g, cores: g.cores.slice(0, half) }, { ...g, name: "", tag: null, vcache: false, temp_key: null, cores: g.cores.slice(half) }];
     });
-    const layout = groups.map((g) => `${g.name}:${g.cores.join(",")}`).join("|");
+    const layout = groups.map((g) => `${g.name}:${g.temp_key || ""}:${!!g.vcache}:${g.cores.join(",")}`).join("|");
     if (host.dataset.layout !== layout) {
       host.dataset.layout = layout;
       host.innerHTML = `<div class="sv-cores__row">` + groups.map((g) => {
         const name = String(g.name).replace(/^CCD/, "ККД");
         const tag = g.vcache ? '<span class="sv-plate sv-plate--sm">3D-кэш</span>' : "";
+        const temp = g.temp_key ? `<span class="sv-ccd__t sv-edge__v" title="Температура чиплета">${ind(`core_group_${g.temp_key}`, 3, 0, "sv-slot--core")}<span class="sv-unit">°C</span></span>` : "";
         const ids = g.cores;
         return `<div class="sv-ccd"><div class="sv-sect">${name ? `<b>${name}</b>` : ""}${tag}<span>ядра ${ids[0] + 1}–${ids[ids.length - 1] + 1}</span>
-            <span class="sv-ccd__t" data-gtemp="${g.temp_key || ""}"></span></div>
+            ${temp}</div>
           <div class="sv-strip">${ids.map((id) => `<div class="sv-edge" data-core="${id}">
             <span class="sv-edge__n">Я${id + 1}</span>
             <div class="sv-edge__body">
-              <div class="sv-edge__pair"><div class="sv-edge__nums">${EDGE_NUMS}</div><div class="sv-edge__face"><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
+              <div class="sv-edge__pair"><div class="sv-edge__face"><div class="sv-edge__nums">${EDGE_NUMS}</div><i class="sv-edge__ptr"></i></div><div class="sv-vbar"><i></i></div></div>
               <span class="sv-edge__v">${ind(`core_f_${id}`, 1, 2, "sv-slot--core")}<span class="sv-unit">ГГц</span></span>
               <span class="sv-edge__v">${ind(`core_t_${id}`, 2, 1, "sv-slot--core")}<span class="sv-unit">°C</span></span></div></div>`).join("")}</div></div>`;
       }).join("") + `</div>`;
@@ -719,10 +718,9 @@
       vFill(el.querySelector(".sv-vbar"), t == null ? 0 : ((t - 30) / 70) * 100);
       el.title = `Ядро ${c.id + 1}: ${c.sleep ? "спит" : `${Math.round(load)} %`}${c.temp != null ? `, ${Math.round(c.temp)} °C` : ""}`;
     }
-    host.querySelectorAll("[data-gtemp]").forEach((el) => {
-      const v = num(m[el.dataset.gtemp]);
-      setText(el, v != null ? `${Math.round(v)} °C` : "");
-    });
+    for (const g of groups) {
+      if (g.temp_key) setInd(`core_group_${g.temp_key}`, num(m[g.temp_key]));
+    }
   }
 
   /* Память — как накопители: плоская газоразрядная шкала с рисками 0…100, справа
@@ -763,29 +761,24 @@
     }
   }
 
-  /* Планки — третьей строкой блока памяти, в том же виде: шкалы температуры 20…80 °C
-     друг под другом, справа значения и максимум за время работы HUD. Две планки —
-     температуры в колонках «%» и «занято»; три и больше — в конце строки каждой шкалы. */
+  /* У каждой планки своё табло справа от шкалы. Максимум в заголовке общий для всех слотов. */
   const DIMM_LO = 20, DIMM_HI = 80;
   let dimmMax = null;
   function renderDimms(dimms) {
     const host = $("[data-dimms]");
     const list = dimms.filter((d) => d.temp != null);
-    const wide = list.length > 2;
-    const layout = list.map((d) => d.slot).join(",") + (wide ? "w" : "");
+    const layout = list.map((d) => d.slot).join(",");
     if (host.dataset.layout !== layout) {
       host.dataset.layout = layout;
       [...inds.keys()].filter((k) => k.startsWith("dimm")).forEach((k) => inds.delete(k));
       const line = (d) => `<div class="sv-dimmline"><span class="sv-cap">DIMM${d.slot}</span>
           <div class="sv-bar2"><div class="sv-seg sv-seg--dimm" data-dimmbar="${d.slot}"><i></i></div></div>
-          ${wide ? `<span class="sv-edge__v">${ind(`dimm${d.slot}`, 2, 1)}<span class="sv-unit">°C</span></span>` : ""}</div>`;
-      host.innerHTML = list.length ? `<div class="sv-memrow sv-memrow--dimm${wide ? " sv-memrow--wide" : ""}">
+          <span class="sv-edge__v">${ind(`dimm${d.slot}`, 2, 1, "sv-slot--sm")}<span class="sv-unit">°C</span></span></div>`;
+      host.innerHTML = list.length ? `<div class="sv-dimmhead">
           <span class="sv-plate sv-plate--sm">Планки</span>
-          <div class="sv-dimmlines">${list.map(line).join("")}
-            <div class="sv-dimmscale"><div class="sv-ticks"></div><div class="sv-ticknums"><span>20</span><span>35</span><span>50</span><span>65</span><span>80</span></div></div></div>
-          ${wide ? "" : list.map((d) => `<span class="sv-edge__v">${ind(`dimm${d.slot}`, 2, 1)}<span class="sv-unit">°C</span></span>`).join("") + (list.length === 1 ? "<span></span>" : "")}
-          <span class="sv-edge__v" title="Самая высокая температура планок с запуска HUD"><span class="sv-cap">макс.</span>${ind("dimm_max", 2, 1)}<span class="sv-unit">°C</span></span>
-        </div>` : "";
+          <span class="sv-edge__v"><span class="sv-cap">Макс. с запуска</span>${ind("dimm_max", 2, 1, "sv-slot--sm")}<span class="sv-unit">°C</span></span>
+        </div>${list.map(line).join("")}
+        <div class="sv-dimmscale"><div class="sv-ticks"></div><div class="sv-ticknums"><span>20</span><span>35</span><span>50</span><span>65</span><span>80</span></div></div>` : "";
       host.querySelectorAll("[data-ind]").forEach(mount);
     }
     for (const d of list) {
@@ -886,29 +879,30 @@
     S.g.cpu_power.set(num(m.cpu_power)); S.g.gpu_power.set(num(m.gpu_power));
     const round = (v) => (v == null ? null : Math.round(v));
     setInd("cpu_clock", round(num(m.cpu_clock)));
-    setInd("vcore", num(m.vcore));
+    setInd("vrm_temp", num(m.vrm_temp));
     setInd("gpu_clock", round(num(m.gpu_clock)));
-    setInd("vram_clock", round(num(m.vram_clock)));
+    const hs = num(m.gpu_hotspot);
+    setInd("gpu_hotspot", hs);
+    $('[data-ind="gpu_hotspot"]').closest(".sv-readout").title = hs != null && gpuT != null ? `на ${Math.round(hs - gpuT)} °C горячее ГП` : "Горячая точка ГП (Hot Spot)";
     lamp("cpu", level(cpuT, LAMP.cpu));
     // у ГП перегревом считается и горячая точка
-    lamp("gpu", Math.max(level(gpuT, LAMP.gpu), level(num(m.gpu_hotspot), LAMP.hotspot)));
+    lamp("gpu", Math.max(level(gpuT, LAMP.gpu), level(hs, LAMP.hotspot)));
 
     renderCores(snap.cores || [], snap.core_groups, m);
 
-    // материнская плата: одна строка индикаторов; помпа и вентиляторы — если есть
-    const rnd = (v) => (v == null ? null : Math.round(v));
-    setInd("mb_vrm", rnd(num(m.vrm_temp)));
-    setInd("mb_chipset", rnd(num(m.chipset_temp)));
-    setInd("mb_sys", rnd(num(m.mobo_temp)));
+    // Плата, охлаждение и шина. Отсутствующий датчик даёт прочерк, остановленный вентилятор — ноль.
+    setInd("mb_chipset", round(num(m.chipset_temp)));
+    setInd("mb_sys", round(num(m.mobo_temp)));
     setInd("mb_soc", num(m.soc_volt));
-    const pump = num(m.pump_rpm);
-    const fans = [m.fan_sys1, m.fan_sys2, m.fan_sys3].map(num).filter((v) => v > 0);
-    setInd("mb_pump", pump > 0 ? Math.round(pump) : null);
+    const fans = [m.fan_sys1, m.fan_sys2, m.fan_sys3].map(num).filter((v) => v != null);
+    const gfans = snap.gpu_fans || [];
+    setInd("mb_pump", round(num(m.pump_rpm)));
     setInd("mb_fans", fans.length ? Math.round(Math.max(...fans)) : null);
-    $('[data-mbi="pump"]').hidden = !(pump > 0);
-    $('[data-mbi="fans"]').hidden = !fans.length;
-    $('[data-mbi="soc"]').hidden = num(m.soc_volt) == null;
+    setInd("mb_fan", gfans.length ? Math.max(...gfans) : round(num(m.gpu_fan)));
+    setInd("mb_bus", round(num(m.bus_load)));
+    setInd("mb_pcie", num(m.pcie_speed));
     $('[data-mbi="fans"]').title = fans.length ? `вентиляторы корпуса: ${fans.map(Math.round).join(", ")} об/мин` : "";
+    $('[data-mbi="fan"]').title = gfans.length ? `вентиляторы видеокарты: ${gfans.join(", ")} об/мин` : "";
 
     // память
     const vramUsed = num(m.vram_used), vramTotal = Number(snap.vram_total_gb) || null;
@@ -925,25 +919,6 @@
         extraLabel: "своб.", extra: ramAvail, extraDigits: dig(ramTotal), extraFrac: 1, extraUnit: "ГБ" },
     ]);
     renderDimms(snap.dimms || []);
-
-    // термики ГП
-    const gh = snap.gpu_history || {};
-    const hs = num(m.gpu_hotspot);
-    const gfans = snap.gpu_fans || [];
-    const fanHist = gh.fan || [];
-    const bus = num(m.bus_load), pcie = num(m.pcie_speed);
-    drawRecorder($('[data-canvas="gputherm"]'), null, { len: 600, series: [
-      { hist: gh.hotspot, smooth: 4, minSpan: 10, ink: "violet" },
-      { hist: fanHist, smooth: 4, lo: 0, hi: Math.max(2000, ...fanHist), ink: "red" },
-      { hist: gh.bus, smooth: 8, lo: 0, hi: 100, ink: "green" },
-    ] });
-    setInd("mb_hotspot", hs);
-    setInd("mb_fan", gfans.length ? Math.max(...gfans) : null);
-    setInd("mb_bus", bus != null ? Math.round(bus) : null);
-    setInd("mb_pcie", pcie != null ? Math.round(pcie) : null);
-    $('[data-mbi="hotspot"]').title = hs != null && gpuT != null ? `на ${Math.round(hs - gpuT)} °C горячее ГП` : "";
-    $('[data-mbi="fan"]').title = gfans.length ? `вентиляторы видеокарты: ${gfans.join(", ")} об/мин` : "";
-    $('[data-mbi="pcie"]').hidden = pcie == null;
 
     // сеть
     const net = snap.network;
@@ -973,26 +948,34 @@
     renderDrives(snap.drives);
   }
 
+  const frameOptions = [["recessed", "Утопленное окно"], ["metal", "Накладная рамка"]];
   window.HudThemes.register({
     id: "soviet",
     exclusiveRender: true,
     name: "Приборная панель (в работе)",
     description: "Тема в разработке: щит приборов в советском духе со стрелками, счётчиками, самописцами и сигнальными лампами",
     preview: "themes/previews/soviet.jpg",
-    defaults: { case: "enamel", digits: "drum", overshoot: true, rec: "paper", paper: "bright", ink: "violet", lamps: true },
+    defaults: { case: "enamel", digits: "drum", large_frame: "metal", small_frame: "recessed",
+      core_layout: "cassette", overshoot: true, rec: "paper", paper: "bright", ink: "violet", lamps: true },
     sections: [
       { title: "Корпус", items: [
         { key: "case", type: "choice", options: [
-          ["enamel", "Эмаль", "#56635b"], ["bakelite", "Карболит", "#2a201a"],
-          ["black", "Чёрный", "#171715"], ["modules", "Светлый", "#b8b4a9"]],
-          hint: "старые эмаль и карболит сохранены; чёрный — порошковая сталь, светлый — приборные модули в графитовой раме" },
+          ["enamel", "Эмаль", "#56635b"],
+          ["black", "Порошковая сталь", "#171715"],
+          ["black-gloss", "Гладкая чёрная эмаль", "#0e0e0e"],
+          ["modules", "Светлый", "#b8b4a9"]],
+          hint: "гладкая чёрная эмаль — ровный глубокий чёрный цвет; порошковая сталь — мелкозернистое покрытие; светлый — модули в графитовой раме" },
       ] },
       { title: "Цифры", items: [
         { key: "digits", type: "choice", options: [
           ["drum", "Барабан"], ["light", "Светлый барабан"], ["nixie", "Газоразрядные лампы"], ["vfd", "Люминесцентные"]],
           hint: "барабан — как у счётчиков, лампы — как ИН-14, люминесцентные — как в часах «Электроника»" },
+        { key: "large_frame", type: "choice", label: "Крупные табло", options: frameOptions },
+        { key: "small_frame", type: "choice", label: "Малые табло", options: frameOptions },
       ] },
       { title: "Приборы", items: [
+        { key: "core_layout", type: "choice", label: "Блок ядер", options: [
+          ["cassette", "Кассета"], ["separate", "Отдельные приборы"]] },
         { key: "overshoot", type: "toggle", label: "Стрелки с перелётом",
           hint: "стрелка проскакивает значение и возвращается, как у настоящего прибора" },
         { key: "lamps", type: "toggle", label: "Лампочки перегрева",
@@ -1019,11 +1002,13 @@
       const html = document.documentElement;
       html.dataset.svCase = settings.case;
       html.dataset.svDigits = settings.digits;
+      html.dataset.svLargeFrame = settings.large_frame;
+      html.dataset.svSmallFrame = settings.small_frame;
+      html.dataset.svCores = settings.core_layout;
       html.dataset.svRec = settings.rec;
       if (settings.overshoot) delete html.dataset.svStill; else html.dataset.svStill = "";
       if (built) {
         // лампочки и самописцы перерисуются на следующем снимке, стрелки — сразу
-        root.querySelectorAll(".sv-pen").forEach((p) => p.style.setProperty("--beam", `rgb(${scopeKit()[p.dataset.ink]})`));
         // самописцы — сразу в новом виде, не дожидаясь снимка
         for (const [canvas, r] of recs) drawRecorder(canvas, r.hist, r.cfg, 0, r.phase);
         if (!opts.lamps) root.querySelectorAll("[data-lamp]").forEach((el) => { if (el.dataset.lamp !== "fps") el.dataset.on = "0"; });

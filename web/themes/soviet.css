@@ -21,19 +21,9 @@ html[data-theme="soviet"] {
   --sans: "osifont", "Segoe UI", sans-serif;
   --mono: "osifont", "Consolas", monospace;
 }
-html[data-theme="soviet"][data-sv-case="bakelite"] {
-  /* карболит: тёмно-коричневая пластмасса */
-  --sv-case: #241b16; --sv-case-hi: #34281f;
-  --sv-plate: #b9a98a; --sv-plate-ink: #18120d;
-  --sv-label: #d8c9a8; --sv-dim: #8f7f66;
-  --bg: #241b16; --panel: #2e241d; --panel-2: #271e18; --line: #4a3b30;
-  --ink: #e6d9bc; --ink-dim: #a08f74;
-  --bg-rgb: 36, 27, 22; --panel-rgb: 46, 36, 29; --panel2-rgb: 39, 30, 24;
-  --ink-rgb: 230, 217, 188; --dim-rgb: 160, 143, 116;
-}
-html[data-theme="soviet"][data-sv-case="black"] {
-  /* чёрная порошковая сталь промышленной стойки */
-  --sv-case: #121210; --sv-case-hi: #2b2925;
+html[data-theme="soviet"]:is([data-sv-case="black"], [data-sv-case="black-gloss"]) {
+  /* чёрная полуматовая эмаль на стальном щите */
+  --sv-case: #101212; --sv-case-hi: #303333;
   --sv-plate: #c8bfa9; --sv-plate-ink: #171612;
   --sv-label: #e7e0d1; --sv-dim: #9f998d;
   --bg: #121210; --panel: #1c1b19; --panel-2: #151513; --line: #3b3934;
@@ -78,13 +68,52 @@ html:not([data-theme="soviet"]) .sv { display: none; }
 }
 .sv-card { text-shadow: 0 -1px 0 rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.12); }
 html[data-theme="soviet"][data-sv-case="black"] .sv-card {
+  /* Зерно краски поверх широкого отражения, а не движущийся экранный шум.
+     Светлая верхняя фаска и тёмный нижний край задают толщину стального листа. */
   background:
-    linear-gradient(105deg, rgba(255,255,255,0.035), transparent 24%),
-    linear-gradient(180deg, #242320, #171715);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 #070706,
-              0 0 0 1px #050505, 0 3px 9px rgba(0,0,0,0.65);
+    url("black-enamel.svg") repeat,
+    radial-gradient(ellipse at 22% -35%, rgba(208,218,215,0.15), transparent 66%),
+    linear-gradient(112deg, transparent 28%, rgba(176,188,184,0.025) 46%, transparent 70%),
+    linear-gradient(180deg, #292d2c 0%, #1d2120 38%, #171a19 100%);
+  background-blend-mode: soft-light, normal, normal, normal;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(228,237,232,0.28),
+              inset 1px 0 0 rgba(213,226,219,0.09),
+              inset -1px 0 0 rgba(0,0,0,0.5), inset 0 -2px 1px rgba(0,0,0,0.7),
+              0 0 0 1px #080a09, 0 2px 2px rgba(0,0,0,0.8), 0 5px 10px rgba(0,0,0,0.4);
+  text-shadow: 0 1px 1px rgba(0,0,0,0.8);
+}
+html[data-theme="soviet"][data-sv-case="black"] body {
+  background-image:
+    url("black-enamel.svg"),
+    radial-gradient(ellipse at 25% 0%, #303534 0%, #171b1a 48%, #0e1110 100%);
+  background-blend-mode: soft-light, normal;
+}
+html[data-theme="soviet"][data-sv-case="black"] .sv-screw {
+  /* Стальные винты чуть темнее хромированных ободков самих приборов. */
+  background: radial-gradient(circle at 35% 25%, #c3c7bf, #858b83 45%, #3d443e 78%, #222822);
+  box-shadow: 0 1px 2px #050605, 0 0 0 1px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+/* Гладкая чёрная эмаль: ровная поверхность, только тонкая кромка по периметру. */
+html[data-theme="soviet"][data-sv-case="black-gloss"] {
+  --sv-case: #090909; --sv-case-hi: #090909;
+  --sv-label: #eee9dd; --sv-dim: #b7b3a9;
+  --bg: #090909; --panel: #1c1c1c; --panel-2: #121212; --line: #414141;
+  --bg-rgb: 9, 9, 9; --panel-rgb: 28, 28, 28; --panel2-rgb: 18, 18, 18;
+}
+html[data-theme="soviet"][data-sv-case="black-gloss"] .sv-card {
+  background: #111;
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16),
+              inset 0 -1px 0 rgba(0,0,0,0.85),
+              0 0 0 1px #030303, 0 3px 5px rgba(0,0,0,0.65);
+  text-shadow: 0 1px 1px #000;
+}
+html[data-theme="soviet"][data-sv-case="black-gloss"] body {
+  background: #090909;
 }
 html[data-theme="soviet"][data-sv-case="modules"] .sv-card {
+  --sv-core-enamel: #c5c1b6;
   --sv-label: #000; --sv-dim: #000;
   --sv-plate: #eee9dc; --sv-plate-ink: #1c1b18;
   --sv-face: #f0e9d7; --sv-face-ink: #1a1813;
@@ -219,7 +248,36 @@ html[data-theme="soviet"][data-sv-case="modules"] .sv-mini { gap: 4px; }
 .sv-slot--xl { font-size: 44px; }
 .sv-slot--sm { font-size: 15px; }
 .sv-slot--dial { font-size: 17px; }
-.sv-dialwin { display: flex; justify-content: center; }
+.sv-dialwin { display: flex; justify-content: center; padding-top: 3px; }
+
+/* Окантовка рисуется вокруг самого табло. Единицы остаются на панели. */
+.sv-slot, html[data-theme="soviet"] .clock {
+  position: relative; isolation: isolate;
+  --cut-depth: 1px;
+  --rim-width: var(--cut-depth);
+  --cut-paint: var(--sv-core-enamel, var(--sv-case));
+  border-radius: 3px;
+}
+.sv-slot:is(.sv-slot--lg, .sv-slot--xl) { --cut-depth: 2px; }
+.sv-slot::before, html[data-theme="soviet"] .clock::before {
+  content: ""; position: absolute; inset: calc(-1 * var(--rim-width)); z-index: -1; pointer-events: none;
+  border: var(--rim-width) solid transparent; border-radius: calc(3px + var(--rim-width));
+  background: linear-gradient(#0c0c0a, #171613) padding-box,
+    var(--metal-finish, linear-gradient(165deg, color-mix(in srgb, var(--cut-paint), black 74%),
+      var(--cut-paint) 70%, color-mix(in srgb, var(--cut-paint), #e2dfcf 40%))) border-box;
+  box-shadow: var(--metal-edge, 0 -1px 0 rgb(0 0 0 / 42%), 0 1px 0 rgb(255 250 228 / 18%));
+}
+.sv-slot::after, html[data-theme="soviet"] .clock::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 var(--cut-depth) var(--cut-depth) rgb(0 0 0 / 72%);
+}
+html[data-sv-large-frame="metal"] .sv-slot:is(.sv-slot--lg, .sv-slot--xl),
+html[data-sv-small-frame="metal"] :is(.sv-slot:not(.sv-slot--lg, .sv-slot--xl), .clock) {
+  --rim-width: calc(var(--cut-depth) + 1px);
+  --metal-finish: linear-gradient(145deg, #c1c0b5, #999b93 23%, #82857e 46%, #555952 77%, #666961);
+  --metal-edge: inset 0 1px 0 #e0dfd4, inset 1px 0 0 #b3b5ab, inset 0 -1px 0 #41453e,
+                0 0 0 1px #33352f, 0 2px 2px rgb(0 0 0 / 55%);
+}
 
 /* газоразрядные лампы (как ИН-14): оранжевая цифра светится за сеткой в стеклянной колбе */
 .sv-ind { display: inline-flex; align-items: flex-end; font-family: var(--mono); text-shadow: none; }
@@ -260,40 +318,58 @@ html[data-theme="soviet"][data-sv-case="modules"] .sv-mini { gap: 4px; }
 .sv-cores__legend { font-size: 12px; color: var(--sv-dim); letter-spacing: 0.04em; line-height: 15px; }
 .sv-cores[hidden] { display: none; }
 .sv-ccd { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; min-height: 0; }
-.sv-ccd .sv-sect span:not(.sv-plate) { color: var(--sv-dim); }
-.sv-ccd__t { order: 3; color: var(--sv-label) !important; letter-spacing: 0.06em; }
+.sv-ccd__t { order: 3; letter-spacing: normal; }
 .sv-ccd .sv-sect::after { order: 2; }
-.sv-strip { flex: 1; min-height: 0; display: flex; gap: 6px; padding: 6px 10px 5px; border-radius: 4px;
-  background: rgba(0,0,0,0.22); box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
+.sv-strip { flex: 1; min-height: 0; display: flex; padding: 6px 6px 5px;
+  --surface: var(--sv-core-enamel, var(--sv-case));
+  --rim: color-mix(in srgb, var(--surface), #ddd9c9 34%);
+  --seam: color-mix(in srgb, var(--surface), black 52%); }
+/* Кассета: один монтажный обод на группу и тонкие перегородки между каналами. */
+html[data-sv-cores="cassette"] .sv-strip {
+  background: var(--surface); border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--seam), inset 0 0 0 3px var(--rim),
+              inset 0 0 0 4px var(--seam), 0 1px 2px rgb(0 0 0 / 45%); }
+html[data-sv-cores="cassette"] .sv-edge { padding-bottom: 8px; }
+html[data-sv-cores="cassette"] .sv-edge + .sv-edge {
+  box-shadow: -1px 0 var(--seam), inset 1px 0 var(--rim); }
+/* Отдельные приборы: у каждого ядра свой узкий корпус вокруг шкалы и окошек. */
+html[data-sv-cores="separate"] .sv-strip { gap: 4px; justify-content: space-around; }
+html[data-sv-cores="separate"] .sv-edge {
+  max-width: 92px; padding: 3px 4px 7px; background: var(--surface); border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--seam), inset 0 0 0 2px var(--rim), 0 1px 2px rgb(0 0 0 / 45%); }
 .sv-edge { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .sv-edge__n { font-size: 13px; color: var(--sv-dim); letter-spacing: 0.04em; line-height: 15px; }
 .sv-edge__f { font-family: var(--mono); font-size: 12px; color: var(--sv-label); line-height: 15px; }
 .sv-edge--sleep .sv-edge__f { color: var(--sv-dim); }
-/* шкала со столбиком и окошки цифр стоят по одной оси (центр колонки); цифры шкалы
-   вынесены влево, единицы — вправо, чтобы не сдвигать центр */
 /* тело колонки шириной в окошко цифр: шкала начинается у левого края окошка,
    столбик температуры кончается у правого */
 .sv-edge__body { flex: 1; min-height: 0; width: max-content; display: grid;
-  grid-template-rows: minmax(48px, 140px) auto auto; row-gap: 4px; align-content: start; }
+  grid-template-rows: minmax(0, 140px) max-content max-content; row-gap: 4px; align-content: start; }
+html[data-sv-small-frame="metal"] .sv-edge__body { row-gap: 8px; }
+html[data-sv-small-frame="metal"] .sv-strip .sv-edge { padding-bottom: 10px; }
 .sv-edge__pair { position: relative; min-height: 0; display: flex; gap: 4px; }
 /* окошко + подпись — одна строка; её ширина (с «ГГц») задаёт ширину шкалы над ней */
 .sv-edge__v { display: flex; align-items: center; gap: 5px; }
 .sv-edge__v .sv-unit { margin-left: 0; font-size: 12px; color: var(--sv-dim); white-space: nowrap; }
-/* цифры 100 · 50 · 0 слева от шкалы и подписи строк индикаторов слева от полосы */
-.sv-edge__nums { position: absolute; right: 100%; top: 0; bottom: 0; width: 22px; margin-right: 4px; }
-.sv-edge__nums b { position: absolute; right: 0; transform: translateY(50%); font-weight: 400; font-size: 11px; line-height: 1; color: var(--sv-label); }
-.sv-edge__face { position: relative; flex: 1; width: 0; border-radius: 2px;
+/* Штампованные цифры и риски на утопленной пластине, прорезь хода стрелки справа. */
+.sv-edge__nums { position: absolute; inset: 0 auto 0 2px; width: 14px; }
+.sv-edge__nums b { position: absolute; right: 0; transform: translateY(50%); font-weight: 400; font-size: 9px; line-height: 1; color: #322e24; }
+.sv-edge__face { position: relative; flex: 1; width: 0; border-radius: 2px; overflow: hidden;
   background:
-    repeating-linear-gradient(to top, transparent 0 calc(10% - 1px), rgba(26,24,19,0.8) calc(10% - 1px) 10%) center top 4px / 44% calc(100% - 8px) no-repeat,
-    repeating-linear-gradient(to top, transparent 0 calc(50% - 1.6px), rgba(26,24,19,1) calc(50% - 1.6px) 50%) center top 4px / 66% calc(100% - 8px) no-repeat,
-    linear-gradient(180deg, #fbf6e6, var(--sv-face));
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.35); }
+    linear-gradient(#373328, #373328) left 17px top 4px / calc(100% - 25px) 1px no-repeat,
+    repeating-linear-gradient(to top, #686253 0 1px, transparent 1px 10%) left 18px top 4px / calc(100% - 32px) calc(100% - 8px) no-repeat,
+    repeating-linear-gradient(to top, #373328 0 1px, transparent 1px 50%) left 17px top 4px / calc(100% - 25px) calc(100% - 8px) no-repeat,
+    linear-gradient(90deg, #d2c9ae, #eee7cf 24%, #eee7cf 80%, #d3cbb3);
+  box-shadow: inset 0 1px 3px #827b65, 0 0 0 1px #171713; }
+.sv-edge__face::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px;
+  background: #302e27; box-shadow: inset 1px 0 #696658; }
 .sv-edge__ptr { position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  filter: drop-shadow(0 1px 0.65px rgba(30,22,14,0.55));
   transition: bottom 0.95s cubic-bezier(0.22, 0.75, 0.28, 1.12); }
 html[data-sv-still] .sv-edge__ptr { transition: bottom 0.95s cubic-bezier(0.22, 0.7, 0.25, 1); }
-/* стрелка — красная линия поперёк шкалы, как у профильных приборов */
-.sv-edge__ptr::before { content: ""; position: absolute; left: 1px; right: 1px; top: -1px; height: 2px; background: var(--sv-red);
-  box-shadow: 0 1px 1.5px rgba(0,0,0,0.35); }
+.sv-edge__ptr::before { content: ""; position: absolute; left: max(17px, 44%); right: 0; top: -2px; height: 4px;
+  background: linear-gradient(#cf4737, var(--sv-red) 54%, #771f18);
+  clip-path: polygon(0 50%, 35% 18%, 100% 0, 100% 100%, 35% 82%); }
 .sv-edge--sleep .sv-edge__ptr::before { opacity: 0.35; }
 
 /* ── самописцы ── */
@@ -321,19 +397,16 @@ html[data-sv-digits="vfd"] .sv-vbar { --on: #4fe6c6; --on-hi: #c8fff0; --glow: r
 .sv-slot--hot .sv-drum__col, .sv-slot--hot .sv-nix b { color: #ff9f94; }
 .sv-slot--hot .sv-vfd rect.on { fill: #ff8a7a; filter: drop-shadow(0 0 2.5px #ff5a4a); }
 
-/* материнская плата — одна строка индикаторов */
-.sv-mbrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
-.sv-mbi { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.sv-mbi[hidden] { display: none; }
-/* метка пера: кружок цвета его чернил */
-.sv-pen { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); flex: none;
-  box-shadow: 0 0 0 1.5px rgba(242,236,217,0.85), 0 1px 2px rgba(0,0,0,0.5); }
-html[data-sv-rec="scope"] .sv-pen { background: var(--beam);
-  box-shadow: 0 0 0 1.5px rgba(10,14,12,0.9), 0 0 5px var(--beam); }
-/* общий самописец ГП занимает всё место между памятью и строкой индикаторов */
-.sv-multirec { flex: 1; min-height: 60px; }
-.sv-mbi .sv-cap { font-size: 13px; letter-spacing: 0.08em; }
-.sv-mbi .sv-unit { margin-left: 0; font-size: 12px; color: var(--sv-dim); }
+/* Плата и охлаждение: таблички слева, подписи и окна стоят на общих осях. */
+.sv-board { display: grid; flex: 1; min-height: 0; align-content: start; container: board / size; }
+.sv-mbrow { display: grid; grid-template-columns: 112px repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column; gap: 3px 12px; align-items: center; padding: 6px 4px; }
+.sv-mbrow + .sv-mbrow { border-top: 1px solid rgb(0 0 0 / 25%); }
+.sv-mbrow .sv-plate { grid-area: 1 / 1; justify-self: start; font-size: 13px; }
+.sv-mbi { display: grid; grid-row: 1 / span 2; grid-template-rows: subgrid; justify-items: start; }
+.sv-mbi__value { grid-row: 1; display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+.sv-mbi .sv-cap { grid-row: 2; font-size: 13px; letter-spacing: 0.08em; }
+.sv-mbi .sv-unit { margin: 0; font-size: 12px; color: var(--sv-dim); }
 .sv-memblock { display: flex; flex-direction: column; gap: 10px; }
 .sv-recs--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .sv-rec { display: flex; flex-direction: column; gap: 4px; min-height: 0; min-width: 0; }
@@ -356,10 +429,8 @@ html[data-sv-rec="scope"] .sv-rec__win canvas { border-radius: 5px; }
 /* колонки одной ширины во всех строках памяти — окошки стоят друг под другом */
 .sv-memrow { display: grid; grid-template-columns: 72px minmax(0, 1fr) 78px 138px 128px; gap: 12px; align-items: center; }
 .sv-memrow .sv-plate { justify-self: start; }
-/* Таблички строк памяти привязаны к самим шкалам, а не к центру блока вместе
-   с подписями шкалы. «Планки» начинается на одной высоте с первой строкой DIMM. */
+/* Таблички строк памяти привязаны к самим шкалам. */
 .sv-mems .sv-memrow > .sv-plate { align-self: start; margin-top: 12px; }
-.sv-memrow--dimm > .sv-plate { align-self: start; margin-top: 0; }
 .sv-memrow .sv-edge__v .sv-cap { font-size: 12px; letter-spacing: 0.08em; }
 .sv-memrow > .sv-edge__v:last-child { justify-self: end; }
 .sv-memrow__bar { min-width: 0; padding-top: 12px; }
@@ -371,18 +442,25 @@ html[data-sv-rec="scope"] .sv-rec__win canvas { border-radius: 5px; }
     repeating-linear-gradient(to right, rgba(233,228,212,0.55) 0 1px, transparent 1px 10%) 0 0 / 100% 2px no-repeat,
     repeating-linear-gradient(to right, rgba(233,228,212,0.85) 0 1.5px, transparent 1.5px 25%) 0 0 / calc(100% + 1.5px) 4px no-repeat; }
 .sv-ticknums { display: flex; justify-content: space-between; margin: 1px 2px 0; font-size: 10px; line-height: 12px; color: var(--sv-dim); }
+.sv-dimms { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; column-gap: 12px; }
 .sv-dimms:empty { display: none; }
-/* строка «Планки»: шкалы друг под другом, общая шкала 20…80 °C под ними */
-.sv-dimmlines { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.sv-dimmline { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 8px; align-items: center; }
-.sv-memrow--wide .sv-dimmline { grid-template-columns: 46px minmax(0, 1fr) auto; }
-.sv-memrow--wide .sv-dimmlines { grid-column: 2 / 5; }
-.sv-dimmline .sv-cap { font-size: 12px; letter-spacing: 0.06em; }
-.sv-dimmline .sv-bar2 { padding: 3px 6px; }
+.sv-dimmhead, .sv-dimmline { grid-column: 1 / -1; align-items: center; }
+.sv-dimmhead { display: flex; justify-content: space-between; margin-bottom: 3px; }
+.sv-dimmline { display: grid; grid-template-columns: subgrid; padding-block: 2px; }
+html[data-sv-small-frame="metal"] .sv-dimmline { padding-block: 3px; }
+.sv-dimms .sv-cap { font-size: 12px; letter-spacing: 0.06em; }
+.sv-dimmline .sv-bar2 { padding: 3px 6px; flex-direction: row; }
 .sv-seg--dimm { height: 7px; flex: 1; }
-.sv-dimmscale { margin-left: 54px; }
-.sv-memrow--wide .sv-dimmscale { margin-right: 80px; }
-.sv-memrow--dimm > .sv-edge__v:last-child { justify-self: end; }
+.sv-dimmscale { grid-column: 2; }
+
+/* На невысоком щите подпись и табло платы помещаются в одну строку.
+   Освобождённая высота достаётся планкам. */
+@container board (max-height: 185px) and (min-width: 740px) {
+  .sv-mbi { grid-row: 1; display: flex; align-items: center; gap: 6px; }
+  .sv-mbi .sv-cap { order: 1; white-space: normal; line-height: 1.1; }
+  .sv-mbrow { padding-block: 4px; }
+  html[data-sv-small-frame="metal"] .sv-mbrow { padding-block: 3px; }
+}
 
 /* ── накопители ── */
 .sv-drives { display: flex; flex-direction: column; gap: 7px; flex: 1; min-height: 0; justify-content: center; }

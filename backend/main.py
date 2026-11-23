@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import __version__
 from .manager import SourceManager
-from .monitors import DEVICE_RE
+from .monitors import DEVICE_RE, labeled_monitors, list_monitors, startup_monitors, window_device
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
@@ -126,6 +126,8 @@ def load_config() -> dict:
         try:
             user = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             cfg = _deep_merge(cfg, {k: v for k, v in user.items() if k not in _LEGACY_MATRIX_KEYS})
+            if not isinstance(cfg.get("window"), dict):
+                cfg["window"] = DEFAULT_CONFIG["window"].copy()
             if not isinstance(cfg.get("themes"), dict):
                 cfg["themes"] = {}
             if not isinstance(cfg["themes"].get("matrix"), dict):
@@ -161,24 +163,63 @@ def save_config_keys(changes: dict) -> None:
     os.replace(tmp, CONFIG_PATH)                                       # атомарно: файл не останется наполовину записанным
 
 
-from .monitors import find as find_monitor, labeled_monitors  # noqa: E402
+def _position_monitor(window: dict, monitors: list[dict]) -> dict | None:
+    """Определить монитор по наибольшей видимой части сохранённого окна."""
+    x, y = window.get("x"), window.get("y")
+    if x is None or y is None or x == -32000 or y == -32000:
+        return None
+    width, height = window["width"], window["height"]
+    inset_x, inset_y = min(8, (width - 1) // 2), min(8, (height - 1) // 2)
+
+    def overlap(mon):
+        left, top = mon["x"], mon["y"]
+        visible_width = min(x + width - inset_x, left + mon["width"]) - max(x + inset_x, left)
+        visible_height = min(y + height - inset_y, top + mon["height"]) - max(y + inset_y, top)
+        return max(0, visible_width) * max(0, visible_height)
+
+    return max((mon for mon in monitors if overlap(mon)), key=overlap, default=None)
 
 
-def _on_screen(x, y) -> bool:
-    """Есть ли сейчас монитор в точке окна (x, y — левый верхний угол; у развёрнутого
-    окна он на 8 px за краем монитора, поэтому смотрим чуть внутрь)."""
-    if x is None or y is None:
-        return False
-    try:
-        import ctypes
-        from ctypes import wintypes
-        user32 = ctypes.windll.user32
-        user32.MonitorFromPoint.restype = wintypes.HMONITOR
-        user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
-        MONITOR_DEFAULTTONULL = 0
-        return bool(user32.MonitorFromPoint(wintypes.POINT(int(x) + 50, int(y) + 50), MONITOR_DEFAULTTONULL))
-    except (AttributeError, OSError):
-        return True    # не Windows — проверить нечем, верим сохранённому
+def _startup_window(config: dict, monitors: list[dict], *, fill_screen: bool) -> tuple[dict, str | None]:
+    """Положение при запуске и монитор, который HUD должен помнить при его отключении."""
+    saved = config["window"]
+    geometry = {}
+    for key in ("width", "height"):
+        value = saved.get(key)
+        geometry[key] = value if type(value) is int and 0 < value <= 65535 else DEFAULT_CONFIG["window"][key]
+    for key in ("x", "y"):
+        value = saved.get(key)
+        geometry[key] = value if type(value) is int and value != -32000 else None
+    saved_device = saved.get("last_monitor")
+    if not isinstance(saved_device, str) or not DEVICE_RE.fullmatch(saved_device):
+        saved_device = None
+    if not monitors:
+        # Если Windows временно не дала карту экранов, размещение выбирает сама ОС.
+        geometry.update(x=None, y=None)
+        return geometry, saved_device
+
+    by_device = {mon["device"]: mon for mon in monitors}
+    explicit = by_device.get(config["monitor"]) if isinstance(config.get("monitor"), str) else None
+    position_monitor = _position_monitor(geometry, monitors)
+    remembered = by_device.get(saved_device) if saved_device else position_monitor
+    target = explicit or remembered
+    if target is None:
+        primary = next((mon for mon in monitors if mon["primary"]), monitors[0])
+        target = primary
+    if not fill_screen and not explicit and remembered is not None and position_monitor is remembered:
+        # После смены разрешения окно может пересекать экран только нижним краем.
+        # Сохраняем точное положение, только если за заголовок можно взяться мышью.
+        x, y = geometry["x"], geometry["y"]
+        right = min(x + geometry["width"], target["x"] + target["width"])
+        visible_width = right - max(x, target["x"])
+        if visible_width >= min(64, geometry["width"]) and target["y"] <= y + 8 < target["y"] + target["height"] - 8:
+            return geometry, remembered["device"]
+    # Windows выбирает экран для разворачивания по стартовому прямоугольнику.
+    # Помещаем его целиком на выбранный экран, даже если он уже остальных.
+    for axis, size in (("x", "width"), ("y", "height")):
+        geometry[size] = min(geometry[size], target[size])
+        geometry[axis] = target[axis] + min(40, (target[size] - geometry[size]) // 2)
+    return geometry, target["device"] if explicit or remembered else saved_device
 
 
 class Api:
@@ -191,10 +232,7 @@ class Api:
         self._lock = threading.Lock()
         self._window = None
         self._fullscreen = bool(config.get("fullscreen") or config.get("start_fullscreen"))
-        self._last_pos = None
-        # где окно было до последнего перемещения: сначала — запомненное в config.json
-        win = config.get("window") or {}
-        self._prev_pos = (win["x"], win["y"]) if win.get("x") is not None and win.get("y") is not None else None
+        self._last_monitor = None
 
     def set_window(self, window) -> None:
         self._window = window
@@ -209,27 +247,44 @@ class Api:
         return {"ok": True, "fullscreen": self._fullscreen}
 
     # ── монитор, на котором HUD закрыли: там же он и откроется ──
+    def _monitor_to_remember(self, device: str) -> str:
+        if device and self._last_monitor and device != self._last_monitor:
+            monitors = {mon["device"]: mon for mon in list_monitors()}
+            # Windows перенесла окно на основной после отключения запомненного экрана.
+            if not monitors or (self._last_monitor not in monitors and monitors.get(device, {}).get("primary")):
+                return self._last_monitor
+        return device
+
     def window_moved(self, x: int, y: int) -> None:
-        if x <= -10000 or y <= -10000:         # свёрнутое окно Windows уводит на -32000
+        if x == -32000 or y == -32000:
             return
-        # Монитор, где было окно, пропал (портативный уснул или выключился) — это Windows
-        # сама перенесла окна на основной. Такой перенос не запоминаем: иначе HUD
-        # «забудет» портативный монитор и в следующий раз откроется на основном.
-        if self._prev_pos is not None and not _on_screen(*self._prev_pos):
-            return
-        self._last_pos = self._prev_pos = (int(x), int(y))
+        device = window_device(self._window)
+        if device:
+            self._last_monitor = self._monitor_to_remember(device)
 
     def window_closing(self) -> None:
-        if self._last_pos is None:
+        device = window_device(self._window)
+        if device is None:
+            return
+        remembered = self._monitor_to_remember(device)
+        on_fallback = remembered != device
+        if on_fallback and remembered == self._config["window"].get("last_monitor"):
             return
         try:
-            save_config_keys({"window": {"x": self._last_pos[0], "y": self._last_pos[1]}})
+            saved = {"last_monitor": remembered}
+            # pywebview ждёт событие shown при чтении x/y. При раннем закрытии
+            # не блокируем этот же поток окна ожиданием показа.
+            native_state = getattr(getattr(self._window, "native", None), "WindowState", None)
+            if not on_fallback and self._window.events.shown.is_set() and str(native_state) != "Minimized":
+                x, y = self._window.x, self._window.y
+                if x != -32000 and y != -32000:
+                    saved.update(x=x, y=y)
+            save_config_keys({"window": saved})
         except (OSError, ValueError):
             pass
 
     def quit(self) -> None:
         """Кнопка «Выйти» — на весь экран крестика нет. Монитор запоминаем, как при закрытии."""
-        self.window_closing()
         if self._window is not None:
             # из потока JS-моста: закрываем чуть позже, чтобы вызов успел вернуться
             threading.Timer(0.05, self._window.destroy).start()
@@ -358,35 +413,20 @@ def main() -> None:
 
     api = Api(manager, config)
     win_cfg = config["window"]
-    x, y = win_cfg["x"], win_cfg["y"]
-    # «Открывать на» конкретном мониторе — если он сейчас подключён
-    chosen = config.get("monitor", "auto")
-    if chosen != "auto":
-        mon = find_monitor(chosen)
-        if mon:
-            x, y = mon["x"] + 40, mon["y"] + 40     # развёрнутое окно займёт этот монитор целиком
-        else:
-            print(f"[pchud] монитора {chosen} сейчас нет — открываю там, где закрыли")
-    # запомненного монитора сейчас нет (портативный выключен) — открываемся на основном,
-    # а не за краем экрана; сам запомненный монитор в config.json остаётся
-    if x is not None and not _on_screen(x, y):
-        print(f"[pchud] монитора в точке {x},{y} сейчас нет — открываю на основном")
-        x = y = None
+    maximized = not api._fullscreen and win_cfg.get("maximized", True)
+    geometry, api._last_monitor = _startup_window(config, startup_monitors(), fill_screen=api._fullscreen or maximized)
 
     window = webview.create_window(
         "PC HUD",
         url=str(WEB_DIR / "index.html"),
         js_api=api,
-        width=win_cfg["width"],
-        height=win_cfg["height"],
-        x=x,
-        y=y,
+        **geometry,
         frameless=win_cfg.get("frameless", False),
         easy_drag=win_cfg.get("frameless", False),
         background_color="#0a0e14",
         fullscreen=api._fullscreen,
         # не на весь экран — развёрнутым: так низ окна не уходит под панель задач
-        maximized=not api._fullscreen and win_cfg.get("maximized", True),
+        maximized=maximized,
     )
     api.set_window(window)
     window.events.moved += api.window_moved
